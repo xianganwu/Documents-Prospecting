@@ -1,0 +1,14 @@
+---
+# 01_hello_world.yml
+# This playbook is a simple starting point to verify connectivity to your managed nodes.
+# It uses the 'ping' module, which doesn't actually use ICMP ping, but checks if
+# Ansible can connect and execute python on the target.
+
+- name: Hello World - Connectivity Check
+  hosts: all
+  gather_facts: false # Skipped for speed in this simple test
+
+  tasks:
+    - name: Ping the remote host
+      ansible.builtin.ping:
+      # The ping module returns "pong" on success.

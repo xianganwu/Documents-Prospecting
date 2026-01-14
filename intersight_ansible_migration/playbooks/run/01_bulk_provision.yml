@@ -1,0 +1,310 @@
+---
+# =============================================================================
+# Playbook: Bulk Server Provisioning
+# =============================================================================
+# Purpose:     Provision multiple servers at once using profile templates.
+#              Designed for data center deployments and fleet management.
+#
+# Phase:       Run (Advanced)
+# Risk Level:  HIGH - Affects multiple servers, creates and deploys profiles
+#
+# Features:
+#   - Read server list from variable or file
+#   - Create profiles from templates
+#   - Batch deployment with throttling
+#   - Progress reporting
+#   - Summary report generation
+#
+# Usage:
+#   # Provision servers from default list
+#   ansible-playbook playbooks/run/01_bulk_provision.yml --ask-vault-pass
+#
+#   # Provision from custom file
+#   ansible-playbook playbooks/run/01_bulk_provision.yml --ask-vault-pass \
+#     -e "@servers_to_provision.yml"
+#
+#   # Dry run
+#   ansible-playbook playbooks/run/01_bulk_provision.yml --ask-vault-pass --check
+# =============================================================================
+
+- name: Bulk Server Provisioning
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  
+  vars:
+    # -------------------------------------------------------------------------
+    # Server List to Provision
+    # -------------------------------------------------------------------------
+    # Override with -e "@your_servers.yml" or -e "servers=[...]"
+    # -------------------------------------------------------------------------
+    servers:
+      - name: "WebServer-01"
+        serial: "FCH00000001"
+        role: "web"
+        environment: "production"
+        
+      - name: "WebServer-02"
+        serial: "FCH00000002"
+        role: "web"
+        environment: "production"
+        
+      - name: "DBServer-01"
+        serial: "FCH00000003"
+        role: "database"
+        environment: "production"
+    
+    # Profile template to use
+    profile_template: "Production-ServerProfile"
+    
+    # Policies to attach
+    policies:
+      boot: "Ansible-Boot-LocalDisk"
+      bios: "Ansible-BIOS-VirtualizationOptimized"
+      storage: "Ansible-Storage-Default"
+      
+    # Organization
+    target_organization: "default"
+    
+    # Batch size for parallel operations
+    batch_size: 5
+    
+    # Whether to deploy immediately after creation
+    auto_deploy: false
+    
+  tasks:
+    # =========================================================================
+    # STEP 1: Display Provisioning Plan
+    # =========================================================================
+    - name: Display provisioning plan
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    BULK SERVER PROVISIONING                                   ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║                                                                               ║
+          ║  Servers to provision: {{ servers | length | string | center(53) }} ║
+          ║  Batch size:           {{ batch_size | string | center(53) }} ║
+          ║  Auto-deploy:          {{ auto_deploy | string | center(53) }} ║
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  SERVERS                                                                      ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          {% for server in servers %}
+          ║  {{ loop.index }}. {{ server.name }} ({{ server.serial }}) - {{ server.role }}
+          {% endfor %}
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  POLICIES TO ATTACH                                                           ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  • Boot:    {{ policies.boot }}
+          ║  • BIOS:    {{ policies.bios }}
+          ║  • Storage: {{ policies.storage }}
+          ║                                                                               ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝
+          
+    # =========================================================================
+    # STEP 2: Confirmation Pause
+    # =========================================================================
+    - name: Confirm before proceeding
+      ansible.builtin.pause:
+        prompt: |
+          
+          ⚠️  ABOUT TO PROVISION {{ servers | length }} SERVERS
+          
+          This will:
+          1. Create {{ servers | length }} server profiles
+          2. Attach boot, BIOS, and storage policies
+          3. Assign profiles to physical servers
+          {% if auto_deploy %}4. Deploy configurations immediately{% endif %}
+          
+          Press ENTER to continue or Ctrl+C, then 'A' to abort
+      when: not ansible_check_mode
+      
+    # =========================================================================
+    # STEP 3: Lookup Organization and Policies
+    # =========================================================================
+    - name: Query organization
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /organization/Organizations
+        query_params:
+          $filter: "Name eq '{{ target_organization }}'"
+      register: org_query
+      
+    - name: Store organization Moid
+      ansible.builtin.set_fact:
+        org_moid: "{{ org_query.api_response.Results[0].Moid }}"
+        
+    - name: Query boot policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /boot/PrecisionPolicies
+        query_params:
+          $filter: "Name eq '{{ policies.boot }}'"
+      register: boot_policy
+      
+    - name: Query BIOS policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /bios/Policies
+        query_params:
+          $filter: "Name eq '{{ policies.bios }}'"
+      register: bios_policy
+      
+    - name: Query storage policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /storage/StoragePolicies
+        query_params:
+          $filter: "Name eq '{{ policies.storage }}'"
+      register: storage_policy
+      
+    # =========================================================================
+    # STEP 4: Validate All Policies Exist
+    # =========================================================================
+    - name: Validate policies exist
+      ansible.builtin.fail:
+        msg: |
+          Missing required policies:
+          {% if boot_policy.api_response.Results | length == 0 %}
+          - Boot policy '{{ policies.boot }}' not found
+          {% endif %}
+          {% if bios_policy.api_response.Results | length == 0 %}
+          - BIOS policy '{{ policies.bios }}' not found
+          {% endif %}
+          {% if storage_policy.api_response.Results | length == 0 %}
+          - Storage policy '{{ policies.storage }}' not found
+          {% endif %}
+      when: >
+        boot_policy.api_response.Results | length == 0 or
+        bios_policy.api_response.Results | length == 0 or
+        storage_policy.api_response.Results | length == 0
+        
+    # =========================================================================
+    # STEP 5: Query Physical Servers
+    # =========================================================================
+    - name: Query all target physical servers
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /compute/PhysicalSummaries
+        query_params:
+          $filter: "Serial eq '{{ item.serial }}'"
+      register: physical_servers
+      loop: "{{ servers }}"
+      loop_control:
+        label: "{{ item.name }}"
+        
+    # =========================================================================
+    # STEP 6: Create Profiles for Each Server
+    # =========================================================================
+    - name: Create server profiles
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /server/Profiles
+        state: present
+        update_method: patch
+        
+        api_body:
+          Name: "{{ item.name }}"
+          Description: "Auto-provisioned by Ansible - {{ item.role }} server"
+          TargetPlatform: "Standalone"
+          
+          Organization:
+            Moid: "{{ org_moid }}"
+            ObjectType: organization.Organization
+            
+          PolicyBucket:
+            - Moid: "{{ boot_policy.api_response.Results[0].Moid }}"
+              ObjectType: boot.PrecisionPolicy
+            - Moid: "{{ bios_policy.api_response.Results[0].Moid }}"
+              ObjectType: bios.Policy
+            - Moid: "{{ storage_policy.api_response.Results[0].Moid }}"
+              ObjectType: storage.StoragePolicy
+              
+          Tags:
+            - Key: "CreatedBy"
+              Value: "Ansible"
+            - Key: "Role"
+              Value: "{{ item.role }}"
+            - Key: "Environment"
+              Value: "{{ item.environment }}"
+            - Key: "ProvisionedAt"
+              Value: "{{ ansible_date_time.iso8601 }}"
+              
+      register: created_profiles
+      loop: "{{ servers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      # Throttle to avoid overwhelming the API
+      throttle: "{{ batch_size }}"
+      
+    # =========================================================================
+    # STEP 7: Assign Physical Servers to Profiles
+    # =========================================================================
+    - name: Assign servers to profiles
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: "/server/Profiles/{{ item.0.api_response.Moid }}"
+        state: present
+        update_method: patch
+        
+        api_body:
+          AssignedServer:
+            Moid: "{{ item.1.api_response.Results[0].Moid }}"
+            ObjectType: "{{ item.1.api_response.Results[0].SourceObjectType }}"
+            
+      loop: "{{ created_profiles.results | zip(physical_servers.results) | list }}"
+      loop_control:
+        label: "{{ item.0.item.name }}"
+      when: item.1.api_response.Results | length > 0
+      register: assigned_servers
+      throttle: "{{ batch_size }}"
+      
+    # =========================================================================
+    # STEP 8: Generate Summary Report
+    # =========================================================================
+    - name: Display provisioning summary
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    PROVISIONING COMPLETE                                      ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║                                                                               ║
+          ║  SUMMARY                                                                      ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  Profiles Created:  {{ created_profiles.results | length }}
+          ║  Servers Assigned:  {{ assigned_servers.results | selectattr('changed', 'equalto', true) | list | length }}
+          ║  Completion Time:   {{ ansible_date_time.iso8601 }}
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  RESULTS                                                                      ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          {% for result in created_profiles.results %}
+          ║  {{ '✅' if result.changed else '⏭️' }} {{ result.item.name | ljust(30) }} {{ 'Created' if result.changed else 'Exists' }}
+          {% endfor %}
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  NEXT STEPS                                                                   ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  1. Verify profiles in Intersight UI                                          ║
+          ║  2. Review assigned configurations                                            ║
+          ║  3. Deploy profiles when ready (manual or via playbook)                       ║
+          ║                                                                               ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝

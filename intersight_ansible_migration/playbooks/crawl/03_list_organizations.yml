@@ -1,0 +1,214 @@
+---
+# =============================================================================
+# Playbook: List Intersight Organizations
+# =============================================================================
+# Purpose:     Query and display all organizations in your Intersight account.
+#              Organizations are used to segment resources and control access.
+#
+# Phase:       Crawl (Beginner)
+# Risk Level:  None - Read-only operation
+#
+# What You'll Learn:
+#   - How organizations work in Intersight
+#   - How to query the organization/Organizations endpoint
+#   - How to use registered variables in subsequent tasks
+#   - How to set facts for use later in a playbook
+#
+# Usage:
+#   ansible-playbook playbooks/crawl/03_list_organizations.yml --ask-vault-pass
+#
+# Why Organizations Matter:
+#   - They segment your infrastructure (Production, Dev, DR, etc.)
+#   - They control who can access what resources
+#   - Policies and profiles are scoped to organizations
+#   - You'll need to specify organizations when creating resources
+# =============================================================================
+
+- name: List Intersight Organizations
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  tasks:
+    # =========================================================================
+    # TASK 1: Query All Organizations
+    # =========================================================================
+    # The organization/Organizations endpoint returns all orgs you have access to
+    # =========================================================================
+    - name: Query all organizations from Intersight
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        
+        # Organizations endpoint
+        resource_path: /organization/Organizations
+        
+        query_params:
+          # Get all organizations (usually not many)
+          $top: 100
+          $orderby: "Name asc"
+          
+      register: organizations
+      
+    # =========================================================================
+    # TASK 2: Store Organization List for Later Use
+    # =========================================================================
+    # set_fact creates a variable that persists through the playbook.
+    # This is useful for passing data between plays or for simplifying
+    # complex expressions.
+    # =========================================================================
+    - name: Store organization list as a fact
+      ansible.builtin.set_fact:
+        org_list: "{{ organizations.api_response.Results }}"
+        org_count: "{{ organizations.api_response.Results | length }}"
+        
+    # =========================================================================
+    # TASK 3: Display Organization Overview
+    # =========================================================================
+    - name: Display organization overview
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    INTERSIGHT ORGANIZATIONS                                   ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  Total Organizations: {{ org_count | string | center(56) }} ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝
+          
+          Understanding Organizations:
+          ─────────────────────────────────────────────────────────────────────────────────
+          • Organizations provide multi-tenancy in Intersight
+          • Resources (servers, policies, profiles) belong to organizations
+          • Role-Based Access Control (RBAC) is scoped to organizations
+          • You can have shared resources or organization-specific ones
+          ─────────────────────────────────────────────────────────────────────────────────
+
+    # =========================================================================
+    # TASK 4: Display Each Organization
+    # =========================================================================
+    - name: Display organization details
+      ansible.builtin.debug:
+        msg: |
+          
+          ┌──────────────────────────────────────────────────────────────────────────────
+          │ ORGANIZATION: {{ item.Name }}
+          ├──────────────────────────────────────────────────────────────────────────────
+          │  Description:     {{ item.Description | default('No description') }}
+          │  Moid:           {{ item.Moid }}
+          │  
+          │  Resource Groups:
+          │  ────────────────────────────────────────────────────────────────────────────
+          {% if item.ResourceGroups is defined and item.ResourceGroups | length > 0 %}
+          {% for rg in item.ResourceGroups %}
+          │    • {{ rg.Moid }} (Use for filtering resources)
+          {% endfor %}
+          {% else %}
+          │    (No explicit resource groups - using defaults)
+          {% endif %}
+          │
+          │  Created:        {{ item.CreateTime | default('N/A') }}
+          │  Modified:       {{ item.ModTime | default('N/A') }}
+          └──────────────────────────────────────────────────────────────────────────────
+      loop: "{{ org_list }}"
+      loop_control:
+        label: "{{ item.Name }}"
+        
+    # =========================================================================
+    # TASK 5: Find Default Organization
+    # =========================================================================
+    # The 'default' organization always exists and is commonly used
+    # =========================================================================
+    - name: Identify the default organization
+      ansible.builtin.set_fact:
+        default_org: "{{ org_list | selectattr('Name', 'equalto', 'default') | list | first | default({}) }}"
+        
+    - name: Display default organization info
+      ansible.builtin.debug:
+        msg: |
+          
+          ════════════════════════════════════════════════════════════════════════════════
+          DEFAULT ORGANIZATION
+          ════════════════════════════════════════════════════════════════════════════════
+          
+          The 'default' organization is special:
+          • It's created automatically for every Intersight account
+          • It's often used for shared resources
+          • New resources go here if no organization is specified
+          
+          Default Org Moid: {{ default_org.Moid | default('Not found') }}
+          
+          💡 TIP: Save this Moid value! You'll need it when creating policies.
+          
+          ════════════════════════════════════════════════════════════════════════════════
+      when: default_org | length > 0
+      
+    # =========================================================================
+    # TASK 6: Create Organization Mapping for Reference
+    # =========================================================================
+    # Creates a simple name-to-moid mapping for easy reference
+    # =========================================================================
+    - name: Create organization name-to-moid mapping
+      ansible.builtin.set_fact:
+        org_mapping: "{{ org_mapping | default({}) | combine({item.Name: item.Moid}) }}"
+      loop: "{{ org_list }}"
+      loop_control:
+        label: "{{ item.Name }}"
+        
+    - name: Display organization mapping
+      ansible.builtin.debug:
+        msg: |
+          
+          ════════════════════════════════════════════════════════════════════════════════
+          ORGANIZATION REFERENCE (Copy these for your playbooks)
+          ════════════════════════════════════════════════════════════════════════════════
+          
+          Add this to your group_vars/all.yml for easy organization reference:
+          
+          ```yaml
+          # Organization Moid Reference
+          organizations:
+          {% for name, moid in org_mapping.items() %}
+            {{ name }}: "{{ moid }}"
+          {% endfor %}
+          ```
+          
+          Usage in playbooks:
+            Organization:
+              - Moid: "{{ organizations.default }}"
+                ObjectType: organization.Organization
+          
+          ════════════════════════════════════════════════════════════════════════════════
+
+    # =========================================================================
+    # TASK 7: Summary and Next Steps
+    # =========================================================================
+    - name: Display next steps
+      ansible.builtin.debug:
+        msg: |
+          
+          ════════════════════════════════════════════════════════════════════════════════
+          ✅ CRAWL PHASE COMPLETE!
+          ════════════════════════════════════════════════════════════════════════════════
+          
+          You have successfully:
+          ☑ Tested API connectivity
+          ☑ Retrieved server inventory
+          ☑ Listed all organizations
+          
+          What you've learned:
+          • How to authenticate with the Intersight API
+          • How to query different API endpoints
+          • How to process and display API responses
+          • How organizations work in Intersight
+          
+          Ready for the next phase? Move on to:
+          👉 Walk Phase: docs/04_walk_phase.md
+          
+          In the Walk Phase, you'll:
+          • Create boot policies
+          • Configure BIOS settings
+          • Build server profiles
+          • Make actual configuration changes (in test org first!)
+          
+          ════════════════════════════════════════════════════════════════════════════════

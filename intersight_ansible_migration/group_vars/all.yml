@@ -1,0 +1,89 @@
+---
+# =============================================================================
+# Intersight Ansible Project - Group Variables
+# =============================================================================
+# This file contains shared variables used across all playbooks.
+# 
+# IMPORTANT: This file should be encrypted with Ansible Vault before use!
+#            Run: ansible-vault encrypt group_vars/all.yml
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Cisco Intersight API Configuration
+# -----------------------------------------------------------------------------
+# Get these values from Intersight UI → Settings → API Keys
+# -----------------------------------------------------------------------------
+
+# Your Intersight API Key ID
+# Format: xxxxxxxx/xxxxxxxx/xxxxxxxx
+intersight_api_key_id: "YOUR_API_KEY_ID_HERE"
+
+# Path to your Secret Key file OR inline the key content
+# Option 1: File path (recommended for CLI usage)
+# intersight_api_private_key: "{{ lookup('file', '~/.intersight/SecretKey.txt') }}"
+#
+# Option 2: Inline key (required for AAP)
+intersight_api_private_key: |
+  -----BEGIN RSA PRIVATE KEY-----
+  YOUR_SECRET_KEY_CONTENT_HERE
+  -----END RSA PRIVATE KEY-----
+
+# Intersight API base URL
+# Use intersight.com for production
+# Use intersight-es.com for EMEA
+intersight_api_uri: "https://intersight.com/api/v1"
+
+# -----------------------------------------------------------------------------
+# Organization Configuration
+# -----------------------------------------------------------------------------
+# Default organization for resource creation
+# Most accounts have a 'default' organization
+# -----------------------------------------------------------------------------
+
+intersight_organization: "default"
+
+# Organization Moid reference (populated by playbooks or set manually)
+# You can get this from the 03_list_organizations.yml playbook
+# organization_moids:
+#   default: "xxxxxxxxxxxx"
+#   production: "xxxxxxxxxxxx"
+
+# -----------------------------------------------------------------------------
+# Default Policy Names
+# -----------------------------------------------------------------------------
+# These are the default names used when creating policies
+# Override in individual playbooks or with -e flags
+# -----------------------------------------------------------------------------
+
+default_policies:
+  boot: "Ansible-Boot-LocalDisk"
+  bios: "Ansible-BIOS-VirtualizationOptimized"
+  storage: "Ansible-Storage-Default"
+  
+# -----------------------------------------------------------------------------
+# Tagging Strategy
+# -----------------------------------------------------------------------------
+# All resources created by Ansible will have these tags
+# Useful for identifying and managing Ansible-created resources
+# -----------------------------------------------------------------------------
+
+default_tags:
+  - Key: "CreatedBy"
+    Value: "Ansible"
+  - Key: "ManagedBy"
+    Value: "Ansible-Intersight-Migration"
+  - Key: "Environment"
+    Value: "Production"
+
+# -----------------------------------------------------------------------------
+# Operational Settings
+# -----------------------------------------------------------------------------
+
+# Maximum number of parallel API operations
+api_throttle: 5
+
+# Pause duration (seconds) between batch operations
+batch_pause: 30
+
+# Enable verbose API logging
+api_debug: false

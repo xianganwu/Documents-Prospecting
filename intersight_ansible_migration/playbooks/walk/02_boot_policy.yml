@@ -1,0 +1,274 @@
+---
+# =============================================================================
+# Playbook: Boot Policy Management
+# =============================================================================
+# Purpose:     Create, update, or delete boot policies in Intersight.
+#              Demonstrates policy-as-code for server boot configuration.
+#
+# Phase:       Walk (Intermediate)
+# Risk Level:  Medium - Creates/modifies Intersight resources
+#
+# What You'll Learn:
+#   - Creating policies with the intersight_rest_api module
+#   - Using state: present/absent for resource management
+#   - Defining boot device order
+#   - Attaching policies to organizations
+#
+# Usage:
+#   # Create boot policy (default name)
+#   ansible-playbook playbooks/walk/02_boot_policy.yml --ask-vault-pass
+#
+#   # Create with custom name
+#   ansible-playbook playbooks/walk/02_boot_policy.yml --ask-vault-pass \
+#     -e "policy_name='Production-Boot-Policy'"
+#
+#   # Delete the policy
+#   ansible-playbook playbooks/walk/02_boot_policy.yml --ask-vault-pass \
+#     -e "policy_state=absent"
+#
+#   # Dry run
+#   ansible-playbook playbooks/walk/02_boot_policy.yml --ask-vault-pass --check
+# =============================================================================
+
+- name: Boot Policy Management
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  # ---------------------------------------------------------------------------
+  # Variables
+  # ---------------------------------------------------------------------------
+  vars:
+    # Policy configuration - override these with -e flags
+    policy_name: "Ansible-Boot-LocalDisk"
+    policy_description: "Boot policy created by Ansible - Boots from local disk"
+    
+    # State: 'present' to create/update, 'absent' to delete
+    policy_state: "present"
+    
+    # Organization name (must match one in your Intersight account)
+    # Default to 'default' which exists in all accounts
+    target_organization: "default"
+    
+    # Boot configuration settings
+    # This defines the boot order for servers using this policy
+    boot_configuration:
+      # Enable UEFI Secure Boot (recommended for modern servers)
+      configured_boot_mode: "Uefi"
+      enforce_uefi_secure_boot: false
+      
+      # Boot devices in priority order
+      boot_devices:
+        # First: Try local disk
+        - name: "LocalDisk"
+          object_type: "boot.LocalDisk"
+          enabled: true
+          slot: "MRAID"
+          
+        # Second: Try PXE boot (useful for imaging)
+        - name: "PXE"
+          object_type: "boot.Pxe"
+          enabled: true
+          slot: "MLOM"
+          interface_source: "name"
+          interface_name: "eth0"
+          ip_type: "IPv4"
+          
+        # Third: Virtual media (for ISO installations)
+        - name: "VirtualMedia"
+          object_type: "boot.VirtualMedia"
+          enabled: true
+          subtype: "cimc-mapped-dvd"
+          
+  tasks:
+    # =========================================================================
+    # STEP 1: Look up Organization Moid
+    # =========================================================================
+    # We need the organization's Moid to attach the policy to it
+    # =========================================================================
+    - name: Query organization to get Moid
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /organization/Organizations
+        query_params:
+          $filter: "Name eq '{{ target_organization }}'"
+      register: org_query
+      
+    - name: Validate organization exists
+      ansible.builtin.fail:
+        msg: |
+          Organization '{{ target_organization }}' not found!
+          
+          Available organizations can be found by running:
+          ansible-playbook playbooks/crawl/03_list_organizations.yml --ask-vault-pass
+      when: org_query.api_response.Results | length == 0
+      
+    - name: Store organization Moid
+      ansible.builtin.set_fact:
+        org_moid: "{{ org_query.api_response.Results[0].Moid }}"
+        
+    - name: Display organization info
+      ansible.builtin.debug:
+        msg: |
+          📍 Target Organization: {{ target_organization }}
+          📍 Organization Moid: {{ org_moid }}
+          
+    # =========================================================================
+    # STEP 2: Check if Policy Already Exists
+    # =========================================================================
+    - name: Check for existing boot policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /boot/PrecisionPolicies
+        query_params:
+          $filter: "Name eq '{{ policy_name }}'"
+      register: existing_policy
+      
+    - name: Display existing policy status
+      ansible.builtin.debug:
+        msg: |
+          {% if existing_policy.api_response.Results | length > 0 %}
+          ℹ️  Policy '{{ policy_name }}' already exists (Moid: {{ existing_policy.api_response.Results[0].Moid }})
+          {% else %}
+          ℹ️  Policy '{{ policy_name }}' does not exist yet
+          {% endif %}
+          
+    # =========================================================================
+    # STEP 3: Create or Update Boot Policy
+    # =========================================================================
+    - name: Create/Update boot policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        
+        # The API endpoint for boot precision policies
+        resource_path: /boot/PrecisionPolicies
+        
+        # 'present' = create if missing, update if exists
+        # 'absent' = delete if exists
+        state: "{{ policy_state }}"
+        
+        # If updating, we need the Moid
+        update_method: "patch"
+        
+        # The policy configuration
+        api_body:
+          Name: "{{ policy_name }}"
+          Description: "{{ policy_description }}"
+          
+          # Organization attachment (required)
+          Organization:
+            Moid: "{{ org_moid }}"
+            ObjectType: organization.Organization
+            
+          # Boot mode configuration
+          ConfiguredBootMode: "{{ boot_configuration.configured_boot_mode }}"
+          EnforceUefiSecureBoot: "{{ boot_configuration.enforce_uefi_secure_boot }}"
+          
+          # Boot device order
+          BootDevices:
+            - Name: "{{ boot_configuration.boot_devices[0].name }}"
+              ObjectType: "{{ boot_configuration.boot_devices[0].object_type }}"
+              Enabled: "{{ boot_configuration.boot_devices[0].enabled }}"
+              Slot: "{{ boot_configuration.boot_devices[0].slot }}"
+              
+            - Name: "{{ boot_configuration.boot_devices[1].name }}"
+              ObjectType: "{{ boot_configuration.boot_devices[1].object_type }}"
+              Enabled: "{{ boot_configuration.boot_devices[1].enabled }}"
+              Slot: "{{ boot_configuration.boot_devices[1].slot }}"
+              InterfaceSource: "{{ boot_configuration.boot_devices[1].interface_source }}"
+              InterfaceName: "{{ boot_configuration.boot_devices[1].interface_name }}"
+              IpType: "{{ boot_configuration.boot_devices[1].ip_type }}"
+              
+            - Name: "{{ boot_configuration.boot_devices[2].name }}"
+              ObjectType: "{{ boot_configuration.boot_devices[2].object_type }}"
+              Enabled: "{{ boot_configuration.boot_devices[2].enabled }}"
+              Subtype: "{{ boot_configuration.boot_devices[2].subtype }}"
+              
+          # Tags for tracking
+          Tags:
+            - Key: "CreatedBy"
+              Value: "Ansible"
+            - Key: "ManagedBy"
+              Value: "Ansible-Intersight-Migration"
+            - Key: "Environment"
+              Value: "Test"
+              
+      register: policy_result
+      when: policy_state == "present"
+      
+    # =========================================================================
+    # STEP 4: Delete Policy (if state is absent)
+    # =========================================================================
+    - name: Delete boot policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /boot/PrecisionPolicies
+        state: absent
+        # Delete by Moid (more precise than name)
+        moid: "{{ existing_policy.api_response.Results[0].Moid }}"
+      register: delete_result
+      when: 
+        - policy_state == "absent"
+        - existing_policy.api_response.Results | length > 0
+        
+    - name: Notify when policy not found for deletion
+      ansible.builtin.debug:
+        msg: "ℹ️  Policy '{{ policy_name }}' does not exist, nothing to delete"
+      when:
+        - policy_state == "absent"
+        - existing_policy.api_response.Results | length == 0
+        
+    # =========================================================================
+    # STEP 5: Display Results
+    # =========================================================================
+    - name: Display creation result
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    BOOT POLICY OPERATION COMPLETE                             ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║                                                                               ║
+          ║  Operation:    {{ policy_state.upper() | center(61) }} ║
+          ║  Policy Name:  {{ policy_name | center(61) }} ║
+          ║  Organization: {{ target_organization | center(61) }} ║
+          ║                                                                               ║
+          {% if policy_state == 'present' %}
+          ║  Boot Order:                                                                  ║
+          ║    1. Local Disk (MRAID)                                                      ║
+          ║    2. PXE Boot (MLOM/eth0)                                                    ║
+          ║    3. Virtual Media (DVD)                                                     ║
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  NEXT STEPS                                                                   ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  1. Verify in Intersight UI: Policies > Boot Order                            ║
+          ║  2. Attach to a server profile (see 05_server_profile.yml)                    ║
+          ║  3. Create additional policies (BIOS, Storage)                                ║
+          {% endif %}
+          ║                                                                               ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝
+      when: policy_state == "present"
+      
+    - name: Display deletion result
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    BOOT POLICY DELETED                                        ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║                                                                               ║
+          ║  Policy '{{ policy_name }}' has been removed from Intersight.
+          ║                                                                               ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝
+      when: 
+        - policy_state == "absent"
+        - existing_policy.api_response.Results | length > 0

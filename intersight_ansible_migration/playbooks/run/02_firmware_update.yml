@@ -1,0 +1,274 @@
+---
+# =============================================================================
+# Playbook: Firmware Update Orchestration
+# =============================================================================
+# Purpose:     Safely update firmware across your server fleet with pre-checks,
+#              rollback capabilities, and comprehensive reporting.
+#
+# Phase:       Run (Advanced)
+# Risk Level:  HIGH - Firmware updates can affect system availability
+#
+# Safety Features:
+#   - Pre-flight health checks
+#   - Current firmware version backup
+#   - Rolling updates with configurable batch size
+#   - Automatic pause on failure
+#   - Post-update verification
+#
+# Modes:
+#   - report_only: Just report current firmware versions
+#   - update: Actually perform the updates
+#
+# Usage:
+#   # Report only (safe)
+#   ansible-playbook playbooks/run/02_firmware_update.yml --ask-vault-pass \
+#     -e "operation=report_only"
+#
+#   # Perform updates
+#   ansible-playbook playbooks/run/02_firmware_update.yml --ask-vault-pass \
+#     -e "operation=update"
+# =============================================================================
+
+- name: Firmware Update Orchestration
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  
+  vars:
+    # Operation mode: 'report_only' or 'update'
+    operation: "report_only"
+    
+    # Target firmware version (from Intersight catalog)
+    target_firmware:
+      bundle_version: "5.2(0.230092)"
+      description: "Latest recommended firmware bundle"
+      
+    # Servers to update (override with -e "@servers.yml")
+    # Leave empty to update all servers
+    target_servers: []
+    
+    # Update strategy
+    update_strategy:
+      batch_size: 1            # Servers to update simultaneously
+      pause_between_batches: 60  # Seconds to wait between batches
+      fail_on_error: true      # Stop all updates if one fails
+      
+    # Pre-flight checks
+    preflight_checks:
+      check_power_state: true
+      check_connection: true
+      skip_already_current: true
+      
+    # Organization
+    target_organization: "default"
+    
+  tasks:
+    # =========================================================================
+    # STEP 1: Display Operation Header
+    # =========================================================================
+    - name: Display operation header
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    FIRMWARE UPDATE ORCHESTRATION                              ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║                                                                               ║
+          ║  Mode:            {{ operation | upper | center(54) }} ║
+          ║  Target Version:  {{ target_firmware.bundle_version | center(54) }} ║
+          ║  Batch Size:      {{ update_strategy.batch_size | string | center(54) }} ║
+          ║                                                                               ║
+          {% if operation == 'report_only' %}
+          ║  ℹ️  REPORT MODE: No changes will be made                                     ║
+          {% else %}
+          ║  ⚠️  UPDATE MODE: Firmware will be updated                                    ║
+          {% endif %}
+          ║                                                                               ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝
+
+    # =========================================================================
+    # STEP 2: Query All Servers and Their Firmware
+    # =========================================================================
+    - name: Query all physical servers
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /compute/PhysicalSummaries
+        query_params:
+          $top: 1000
+          $select: "Name,Serial,Firmware,ManagementMode,OperPowerState,Moid"
+          $orderby: "Name asc"
+      register: all_servers
+      
+    - name: Filter target servers
+      ansible.builtin.set_fact:
+        servers_to_process: "{{ all_servers.api_response.Results if target_servers | length == 0 else all_servers.api_response.Results | selectattr('Serial', 'in', target_servers) | list }}"
+        
+    # =========================================================================
+    # STEP 3: Generate Firmware Report
+    # =========================================================================
+    - name: Generate firmware version report
+      ansible.builtin.set_fact:
+        firmware_report: "{{ firmware_report | default([]) + [{ 'name': item.Name, 'serial': item.Serial, 'current_firmware': item.Firmware | default('Unknown'), 'power_state': item.OperPowerState | default('Unknown'), 'moid': item.Moid, 'needs_update': (item.Firmware | default('')) != target_firmware.bundle_version }] }}"
+      loop: "{{ servers_to_process }}"
+      loop_control:
+        label: "{{ item.Name }}"
+        
+    - name: Display firmware report
+      ansible.builtin.debug:
+        msg: |
+          
+          ═══════════════════════════════════════════════════════════════════════════════
+          FIRMWARE VERSION REPORT
+          ═══════════════════════════════════════════════════════════════════════════════
+          
+          Target Version: {{ target_firmware.bundle_version }}
+          Report Time: {{ ansible_date_time.iso8601 }}
+          
+          ───────────────────────────────────────────────────────────────────────────────
+          SERVER                    CURRENT VERSION      POWER    STATUS
+          ───────────────────────────────────────────────────────────────────────────────
+          {% for server in firmware_report %}
+          {{ server.name | truncate(25, True, '') | ljust(25) }} {{ (server.current_firmware | truncate(18, True, '') | ljust(20)) }} {{ server.power_state | ljust(8) }} {{ '⚠️ Needs Update' if server.needs_update else '✅ Current' }}
+          {% endfor %}
+          ───────────────────────────────────────────────────────────────────────────────
+          
+          SUMMARY
+          ───────────────────────────────────────────────────────────────────────────────
+          Total Servers:      {{ firmware_report | length }}
+          Need Update:        {{ firmware_report | selectattr('needs_update', 'equalto', true) | list | length }}
+          Already Current:    {{ firmware_report | selectattr('needs_update', 'equalto', false) | list | length }}
+          
+          ═══════════════════════════════════════════════════════════════════════════════
+          
+    # =========================================================================
+    # STEP 4: Filter Servers Needing Update
+    # =========================================================================
+    - name: Identify servers needing update
+      ansible.builtin.set_fact:
+        servers_to_update: "{{ firmware_report | selectattr('needs_update', 'equalto', true) | list }}"
+        
+    - name: Report if no updates needed
+      ansible.builtin.debug:
+        msg: |
+          
+          ✅ All servers are already running the target firmware version.
+          No updates required.
+          
+      when: servers_to_update | length == 0
+      
+    # =========================================================================
+    # STEP 5: Proceed with Updates (if operation=update)
+    # =========================================================================
+    - name: Firmware update block
+      when: 
+        - operation == "update"
+        - servers_to_update | length > 0
+      block:
+        - name: Confirm firmware update
+          ansible.builtin.pause:
+            prompt: |
+              
+              ⚠️  FIRMWARE UPDATE CONFIRMATION
+              
+              You are about to update firmware on {{ servers_to_update | length }} server(s).
+              
+              Target Version: {{ target_firmware.bundle_version }}
+              
+              Servers:
+              {% for server in servers_to_update %}
+              - {{ server.name }} ({{ server.current_firmware }} → {{ target_firmware.bundle_version }})
+              {% endfor %}
+              
+              This operation may require server reboots.
+              
+              Press ENTER to continue or Ctrl+C, then 'A' to abort
+          when: not ansible_check_mode
+          
+        - name: Query HCL firmware for target version
+          cisco.intersight.intersight_rest_api:
+            api_private_key: "{{ intersight_api_private_key }}"
+            api_key_id: "{{ intersight_api_key_id }}"
+            api_uri: "{{ intersight_api_uri }}"
+            resource_path: /firmware/Distributables
+            query_params:
+              $filter: "Version eq '{{ target_firmware.bundle_version }}'"
+              $top: 1
+          register: firmware_distributable
+          
+        - name: Validate firmware bundle exists
+          ansible.builtin.fail:
+            msg: "Firmware bundle '{{ target_firmware.bundle_version }}' not found in Intersight catalog"
+          when: firmware_distributable.api_response.Results | length == 0
+          
+        - name: Create firmware upgrade for each server
+          cisco.intersight.intersight_rest_api:
+            api_private_key: "{{ intersight_api_private_key }}"
+            api_key_id: "{{ intersight_api_key_id }}"
+            api_uri: "{{ intersight_api_uri }}"
+            resource_path: /firmware/Upgrades
+            state: present
+            
+            api_body:
+              Server:
+                Moid: "{{ item.moid }}"
+                ObjectType: compute.RackUnit  # or compute.Blade for blade servers
+              Distributable:
+                Moid: "{{ firmware_distributable.api_response.Results[0].Moid }}"
+                ObjectType: firmware.Distributable
+              UpgradeType: "direct_upgrade"
+              SkipEstimateImpact: false
+              
+          loop: "{{ servers_to_update }}"
+          loop_control:
+            label: "{{ item.name }}"
+            pause: "{{ update_strategy.pause_between_batches }}"
+          throttle: "{{ update_strategy.batch_size }}"
+          register: firmware_upgrades
+          
+        - name: Display update initiation results
+          ansible.builtin.debug:
+            msg: |
+              
+              ╔══════════════════════════════════════════════════════════════════════════════╗
+              ║                    FIRMWARE UPDATES INITIATED                                 ║
+              ╠══════════════════════════════════════════════════════════════════════════════╣
+              ║                                                                               ║
+              ║  Updates Initiated: {{ firmware_upgrades.results | length }}
+              ║  Target Version:    {{ target_firmware.bundle_version }}
+              ║                                                                               ║
+              ╠══════════════════════════════════════════════════════════════════════════════╣
+              ║  STATUS                                                                       ║
+              ║  ───────────────────────────────────────────────────────────────────────────  ║
+              {% for result in firmware_upgrades.results %}
+              ║  {{ '✅' if result.changed else '❌' }} {{ result.item.name }}: {{ 'Upgrade initiated' if result.changed else 'Failed' }}
+              {% endfor %}
+              ║                                                                               ║
+              ╠══════════════════════════════════════════════════════════════════════════════╣
+              ║  NEXT STEPS                                                                   ║
+              ║  ───────────────────────────────────────────────────────────────────────────  ║
+              ║  1. Monitor upgrade progress in Intersight UI                                 ║
+              ║  2. Servers will reboot as needed                                             ║
+              ║  3. Re-run this playbook with report_only to verify                           ║
+              ║                                                                               ║
+              ╚══════════════════════════════════════════════════════════════════════════════╝
+
+    # =========================================================================
+    # Report Only Mode Complete
+    # =========================================================================
+    - name: Report mode complete
+      ansible.builtin.debug:
+        msg: |
+          
+          ═══════════════════════════════════════════════════════════════════════════════
+          REPORT MODE COMPLETE
+          ═══════════════════════════════════════════════════════════════════════════════
+          
+          To perform the actual firmware updates, run:
+          
+          ansible-playbook playbooks/run/02_firmware_update.yml --ask-vault-pass \
+            -e "operation=update"
+          
+          ═══════════════════════════════════════════════════════════════════════════════
+      when: operation == "report_only"

@@ -1,0 +1,159 @@
+---
+# =============================================================================
+# Playbook: Test Intersight API Connection
+# =============================================================================
+# Purpose:     Verify that your Intersight API credentials are configured
+#              correctly and that Ansible can communicate with the API.
+#
+# Phase:       Crawl (Beginner)
+# Risk Level:  None - This is a read-only operation
+# 
+# Prerequisites:
+#   1. Complete the setup in docs/00_prerequisites.md
+#   2. Configure API keys per docs/01_api_key_setup.md
+#   3. Encrypt group_vars/all.yml with Ansible Vault
+#
+# Usage:
+#   cd /path/to/intersight_ansible_migration
+#   ansible-playbook playbooks/crawl/01_test_connection.yml --ask-vault-pass
+#
+# Expected Result:
+#   - SUCCESS message if connection works
+#   - ERROR message with details if connection fails
+# =============================================================================
+
+- name: Test Intersight API Connection
+  hosts: localhost
+  # Connection type for API calls - we're not SSHing anywhere
+  connection: local
+  # Don't gather facts about the local machine - not needed for API calls
+  gather_facts: false
+  
+  # ---------------------------------------------------------------------------
+  # Variables
+  # ---------------------------------------------------------------------------
+  # These are loaded automatically from group_vars/all.yml
+  # Required variables:
+  #   - intersight_api_key_id: Your Intersight API Key ID
+  #   - intersight_api_private_key: Content of your SecretKey.txt
+  #   - intersight_api_uri: https://intersight.com/api/v1
+  # ---------------------------------------------------------------------------
+  
+  tasks:
+    # =========================================================================
+    # TASK 1: Verify API credentials are loaded
+    # =========================================================================
+    # This task confirms that your variables are being read from group_vars.
+    # If you see "VARIABLE IS NOT DEFINED", check your group_vars/all.yml
+    # =========================================================================
+    - name: Verify API credentials are loaded
+      ansible.builtin.debug:
+        msg: |
+          Testing connection with API Key ID: {{ intersight_api_key_id[:20] }}...
+          API URI: {{ intersight_api_uri }}
+      
+      # Fail early if credentials aren't set
+      # The 'assert' module would be better for production, but debug 
+      # gives clearer output for learning
+      
+    # =========================================================================
+    # TASK 2: Query Intersight API
+    # =========================================================================
+    # This is the core API call. We're querying the IAM Users endpoint which:
+    #   - Is available to all authenticated users
+    #   - Returns quickly (small response)
+    #   - Proves authentication works
+    # =========================================================================
+    - name: Query Intersight API
+      cisco.intersight.intersight_rest_api:
+        # Authentication parameters - these come from group_vars/all.yml
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        
+        # The API endpoint to query
+        # This returns information about users in your Intersight account
+        resource_path: /iam/Users
+        
+        # Query parameters to limit the response
+        # $top: 1 means "return only 1 result" - faster for testing
+        query_params:
+          $top: 1
+          
+      # Store the API response in a variable for later use
+      register: api_response
+      
+      # Don't fail the entire playbook if this task fails
+      # We want to show a friendly error message in the next task
+      ignore_errors: true
+      
+    # =========================================================================
+    # TASK 3: Display success message
+    # =========================================================================
+    # Only runs if the API call succeeded
+    # =========================================================================
+    - name: Display connection status - SUCCESS
+      ansible.builtin.debug:
+        msg: |
+          ✅ SUCCESS: Connected to Intersight!
+          
+          API Response Details:
+          - Status: Connected
+          - Endpoint: {{ intersight_api_uri }}/iam/Users
+          - Response received: Yes
+          
+          Your Ansible environment is correctly configured for Intersight automation.
+          
+          Next steps:
+          1. Try playbook 02_get_server_info.yml to see your servers
+          2. Review docs/03_crawl_phase.md for more exercises
+      when: api_response is succeeded
+      
+    # =========================================================================
+    # TASK 4: Display failure message with troubleshooting
+    # =========================================================================
+    # Only runs if the API call failed
+    # =========================================================================
+    - name: Display connection status - FAILURE
+      ansible.builtin.debug:
+        msg: |
+          ❌ FAILED: Could not connect to Intersight
+          
+          Error details:
+          {{ api_response.msg | default('Unknown error') }}
+          
+          Troubleshooting steps:
+          
+          1. VERIFY API KEY ID
+             - Check that intersight_api_key_id in group_vars/all.yml 
+               matches exactly what's shown in Intersight UI
+             - No leading/trailing spaces
+             
+          2. VERIFY SECRET KEY
+             - Ensure SecretKey.txt contains the complete key
+             - Including -----BEGIN RSA PRIVATE KEY----- header
+             - Check file path in group_vars/all.yml is correct
+             
+          3. CHECK NETWORK
+             - Can you reach https://intersight.com?
+             - Is a proxy required? Set HTTPS_PROXY environment variable
+             
+          4. CHECK API KEY STATUS
+             - Log into Intersight and verify the key is active
+             - Keys can be revoked or expired
+             
+          5. REGENERATE IF NEEDED
+             - Create a new API key in Intersight
+             - Update group_vars/all.yml with new key ID
+             - Replace SecretKey.txt with new secret key
+      when: api_response is failed
+      
+    # =========================================================================
+    # TASK 5: Fail the playbook if connection failed
+    # =========================================================================
+    # This ensures the playbook reports failure status to any calling tools
+    # =========================================================================
+    - name: Ensure connection succeeded
+      ansible.builtin.fail:
+        msg: "Connection test failed. See troubleshooting steps above."
+      when: api_response is failed

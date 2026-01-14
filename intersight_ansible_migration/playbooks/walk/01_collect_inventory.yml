@@ -1,0 +1,229 @@
+---
+# =============================================================================
+# Playbook: Collect Complete Intersight Inventory
+# =============================================================================
+# Purpose:     Collect comprehensive inventory data from Intersight and export
+#              to JSON files for analysis, documentation, or integration.
+#
+# Phase:       Walk (Intermediate)
+# Risk Level:  None - Read-only operations
+#
+# What You'll Learn:
+#   - Querying multiple API endpoints in one playbook
+#   - Organizing data with set_fact
+#   - Exporting data to files
+#   - Creating reusable inventory collection workflows
+#
+# Output Files:
+#   - output/servers.json      - Physical server inventory
+#   - output/policies.json     - All policy types
+#   - output/profiles.json     - Server profiles
+#   - output/inventory.json    - Combined inventory
+#
+# Usage:
+#   ansible-playbook playbooks/walk/01_collect_inventory.yml --ask-vault-pass
+# =============================================================================
+
+- name: Collect Complete Intersight Inventory
+  hosts: localhost
+  connection: local
+  gather_facts: true  # Need ansible_date_time for timestamps
+  
+  vars:
+    # Directory for output files
+    output_dir: "{{ playbook_dir }}/../../output"
+    
+    # Timestamp for file naming
+    timestamp: "{{ ansible_date_time.date }}"
+    
+  tasks:
+    # =========================================================================
+    # SETUP: Create Output Directory
+    # =========================================================================
+    - name: Ensure output directory exists
+      ansible.builtin.file:
+        path: "{{ output_dir }}"
+        state: directory
+        mode: '0755'
+        
+    # =========================================================================
+    # SECTION 1: Collect Server Inventory
+    # =========================================================================
+    - name: "SERVERS: Query physical servers"
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /compute/PhysicalSummaries
+        query_params:
+          $top: 1000
+          $orderby: "Name asc"
+      register: servers_raw
+      
+    - name: "SERVERS: Process server data"
+      ansible.builtin.set_fact:
+        servers_inventory: "{{ servers_raw.api_response.Results | default([]) }}"
+        
+    - name: "SERVERS: Display count"
+      ansible.builtin.debug:
+        msg: "📊 Found {{ servers_inventory | length }} physical servers"
+        
+    # =========================================================================
+    # SECTION 2: Collect All Policies
+    # =========================================================================
+    # We'll collect multiple policy types in parallel-ish (sequential in Ansible)
+    
+    - name: "POLICIES: Query boot policies"
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /boot/PrecisionPolicies
+        query_params:
+          $top: 1000
+      register: boot_policies
+      
+    - name: "POLICIES: Query BIOS policies"
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /bios/Policies
+        query_params:
+          $top: 1000
+      register: bios_policies
+      
+    - name: "POLICIES: Query storage policies"
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /storage/StoragePolicies
+        query_params:
+          $top: 1000
+      register: storage_policies
+      
+    - name: "POLICIES: Query LAN connectivity policies"
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /vnic/LanConnectivityPolicies
+        query_params:
+          $top: 1000
+      register: lan_policies
+      
+    - name: "POLICIES: Aggregate all policies"
+      ansible.builtin.set_fact:
+        all_policies:
+          boot: "{{ boot_policies.api_response.Results | default([]) }}"
+          bios: "{{ bios_policies.api_response.Results | default([]) }}"
+          storage: "{{ storage_policies.api_response.Results | default([]) }}"
+          lan: "{{ lan_policies.api_response.Results | default([]) }}"
+        policy_counts:
+          boot: "{{ boot_policies.api_response.Results | default([]) | length }}"
+          bios: "{{ bios_policies.api_response.Results | default([]) | length }}"
+          storage: "{{ storage_policies.api_response.Results | default([]) | length }}"
+          lan: "{{ lan_policies.api_response.Results | default([]) | length }}"
+          
+    - name: "POLICIES: Display counts"
+      ansible.builtin.debug:
+        msg: |
+          📊 Policy Counts:
+            • Boot Policies: {{ policy_counts.boot }}
+            • BIOS Policies: {{ policy_counts.bios }}
+            • Storage Policies: {{ policy_counts.storage }}
+            • LAN Connectivity: {{ policy_counts.lan }}
+
+    # =========================================================================
+    # SECTION 3: Collect Server Profiles
+    # =========================================================================
+    - name: "PROFILES: Query server profiles"
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /server/Profiles
+        query_params:
+          $top: 1000
+          $orderby: "Name asc"
+      register: server_profiles
+      
+    - name: "PROFILES: Process profile data"
+      ansible.builtin.set_fact:
+        profiles_inventory: "{{ server_profiles.api_response.Results | default([]) }}"
+        
+    - name: "PROFILES: Display count"
+      ansible.builtin.debug:
+        msg: "📊 Found {{ profiles_inventory | length }} server profiles"
+
+    # =========================================================================
+    # SECTION 4: Export to JSON Files
+    # =========================================================================
+    - name: "EXPORT: Save server inventory"
+      ansible.builtin.copy:
+        content: "{{ servers_inventory | to_nice_json }}"
+        dest: "{{ output_dir }}/servers_{{ timestamp }}.json"
+        mode: '0644'
+        
+    - name: "EXPORT: Save policies"
+      ansible.builtin.copy:
+        content: "{{ all_policies | to_nice_json }}"
+        dest: "{{ output_dir }}/policies_{{ timestamp }}.json"
+        mode: '0644'
+        
+    - name: "EXPORT: Save profiles"
+      ansible.builtin.copy:
+        content: "{{ profiles_inventory | to_nice_json }}"
+        dest: "{{ output_dir }}/profiles_{{ timestamp }}.json"
+        mode: '0644'
+        
+    - name: "EXPORT: Save combined inventory"
+      ansible.builtin.copy:
+        content: |
+          {{ {
+            "collection_timestamp": ansible_date_time.iso8601,
+            "servers": servers_inventory,
+            "policies": all_policies,
+            "profiles": profiles_inventory,
+            "summary": {
+              "total_servers": servers_inventory | length,
+              "total_profiles": profiles_inventory | length,
+              "policy_counts": policy_counts
+            }
+          } | to_nice_json }}
+        dest: "{{ output_dir }}/complete_inventory_{{ timestamp }}.json"
+        mode: '0644'
+        
+    # =========================================================================
+    # SECTION 5: Display Summary
+    # =========================================================================
+    - name: Display inventory summary
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    INVENTORY COLLECTION COMPLETE                              ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║                                                                               ║
+          ║  Collection Time: {{ ansible_date_time.iso8601 | center(55) }} ║
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  SUMMARY                                                                      ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  Servers:         {{ (servers_inventory | length | string).ljust(57) }} ║
+          ║  Server Profiles: {{ (profiles_inventory | length | string).ljust(57) }} ║
+          ║  Boot Policies:   {{ (policy_counts.boot | string).ljust(57) }} ║
+          ║  BIOS Policies:   {{ (policy_counts.bios | string).ljust(57) }} ║
+          ║  Storage Policies:{{ (policy_counts.storage | string).ljust(57) }} ║
+          ║  LAN Policies:    {{ (policy_counts.lan | string).ljust(57) }} ║
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  OUTPUT FILES                                                                 ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  📁 {{ output_dir }}/servers_{{ timestamp }}.json
+          ║  📁 {{ output_dir }}/policies_{{ timestamp }}.json
+          ║  📁 {{ output_dir }}/profiles_{{ timestamp }}.json
+          ║  📁 {{ output_dir }}/complete_inventory_{{ timestamp }}.json
+          ║                                                                               ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝

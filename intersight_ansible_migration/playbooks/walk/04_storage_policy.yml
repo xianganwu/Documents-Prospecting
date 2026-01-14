@@ -1,0 +1,229 @@
+---
+# =============================================================================
+# Playbook: Storage Policy Management
+# =============================================================================
+# Purpose:     Create storage policies for RAID configuration and virtual drive
+#              management. Critical for consistent storage provisioning.
+#
+# Phase:       Walk (Intermediate)
+# Risk Level:  Medium - Creates Intersight resources
+#
+# What This Configures:
+#   - RAID controller settings
+#   - Drive groups (which drives to use)
+#   - Virtual drive creation (RAID levels)
+#   - Default storage configuration
+#
+# Usage:
+#   ansible-playbook playbooks/walk/04_storage_policy.yml --ask-vault-pass
+#
+#   # Custom RAID level
+#   ansible-playbook playbooks/walk/04_storage_policy.yml --ask-vault-pass \
+#     -e "raid_level=Raid1"
+# =============================================================================
+
+- name: Storage Policy Management
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  vars:
+    # Policy configuration
+    policy_name: "Ansible-Storage-Default"
+    policy_description: "Default storage policy with RAID configuration"
+    policy_state: "present"
+    target_organization: "default"
+    
+    # RAID Configuration
+    # Options: Raid0, Raid1, Raid5, Raid6, Raid10, Raid50, Raid60
+    raid_level: "Raid1"
+    
+    # Controller slot (typically MRAID for most UCS servers)
+    controller_slot: "MRAID"
+    
+    # Virtual drive settings
+    virtual_drive:
+      name: "VD01"
+      size_gb: 0  # 0 = use all available space
+      expand_to_available: true
+      
+    # Drive selection mode
+    # 'automatic' = let controller choose drives
+    # 'manual' = specify exact drive slots
+    drive_selection: "automatic"
+    
+    # For automatic selection
+    drive_count: 2  # Number of drives for the RAID group
+    
+  tasks:
+    # =========================================================================
+    # STEP 1: Display Configuration Summary
+    # =========================================================================
+    - name: Display storage configuration
+      ansible.builtin.debug:
+        msg: |
+          
+          ═══════════════════════════════════════════════════════════════════════
+          STORAGE CONFIGURATION
+          ═══════════════════════════════════════════════════════════════════════
+          
+          Policy Name:      {{ policy_name }}
+          RAID Level:       {{ raid_level }}
+          Controller:       {{ controller_slot }}
+          Virtual Drive:    {{ virtual_drive.name }}
+          Drive Count:      {{ drive_count }}
+          
+          ═══════════════════════════════════════════════════════════════════════
+          
+          RAID Level Guide:
+          ─────────────────────────────────────────────────────────────────────────
+          • Raid0:  Striping, no redundancy (fastest, min 1 drive)
+          • Raid1:  Mirroring (good redundancy, min 2 drives)
+          • Raid5:  Striping + parity (balanced, min 3 drives)
+          • Raid6:  Striping + double parity (high redundancy, min 4 drives)
+          • Raid10: Mirrored stripes (best performance + redundancy, min 4 drives)
+          ─────────────────────────────────────────────────────────────────────────
+          
+    # =========================================================================
+    # STEP 2: Look up Organization
+    # =========================================================================
+    - name: Query organization
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /organization/Organizations
+        query_params:
+          $filter: "Name eq '{{ target_organization }}'"
+      register: org_query
+      
+    - name: Store organization Moid
+      ansible.builtin.set_fact:
+        org_moid: "{{ org_query.api_response.Results[0].Moid }}"
+        
+    # =========================================================================
+    # STEP 3: Create Storage Policy
+    # =========================================================================
+    - name: Create/Update storage policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /storage/StoragePolicies
+        state: "{{ policy_state }}"
+        update_method: "patch"
+        
+        api_body:
+          Name: "{{ policy_name }}"
+          Description: "{{ policy_description }}"
+          
+          Organization:
+            Moid: "{{ org_moid }}"
+            ObjectType: organization.Organization
+            
+          # Global controller settings
+          GlobalHotSpares: ""
+          UnusedDisksState: "UnconfiguredGood"
+          UseJbodForVdCreation: false
+          
+          # M.2 RAID Configuration (for boot drives)
+          M2VirtualDrive:
+            Enable: false
+            
+          # RAID0 Configuration (for single-drive setups)
+          Raid0Drive:
+            Enable: false
+            
+          # Tags for tracking
+          Tags:
+            - Key: "CreatedBy"
+              Value: "Ansible"
+            - Key: "RaidLevel"
+              Value: "{{ raid_level }}"
+            - Key: "ManagedBy"
+              Value: "Ansible-Intersight-Migration"
+              
+      register: storage_policy_result
+      when: policy_state == "present"
+      
+    # =========================================================================
+    # STEP 4: Create Drive Group Policy
+    # =========================================================================
+    # Note: In Intersight, drive groups and virtual drives are separate objects
+    # that reference the storage policy. This creates the drive group.
+    # =========================================================================
+    - name: Create drive group configuration
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /storage/DriveGroups
+        state: "{{ policy_state }}"
+        
+        api_body:
+          Name: "DG01"
+          RaidLevel: "{{ raid_level }}"
+          
+          # Link to the storage policy we just created
+          StoragePolicy:
+            Moid: "{{ storage_policy_result.api_response.Moid }}"
+            ObjectType: storage.StoragePolicy
+            
+          # Automatic drive selection
+          AutomaticDriveGroup:
+            DriveType: "SSD"
+            DrivesPerSpan: "{{ drive_count }}"
+            NumDedicatedHotSpares: 0
+            NumSpans: 1
+            MinimumDriveSize: 0
+            UseRemainingDrives: false
+            
+          # Virtual drive configuration within this drive group
+          VirtualDrives:
+            - Name: "{{ virtual_drive.name }}"
+              Size: "{{ virtual_drive.size_gb }}"
+              ExpandToAvailable: "{{ virtual_drive.expand_to_available }}"
+              StripSize: "64"
+              AccessPolicy: "ReadWrite"
+              ReadPolicy: "Default"
+              WritePolicy: "WriteBackGoodBbu"
+              DriveCache: "Default"
+              
+      register: drive_group_result
+      when: 
+        - policy_state == "present"
+        - storage_policy_result is succeeded
+      ignore_errors: true  # May fail if policy already exists
+      
+    # =========================================================================
+    # STEP 5: Display Results
+    # =========================================================================
+    - name: Display result
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    STORAGE POLICY CREATED SUCCESSFULLY                        ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║                                                                               ║
+          ║  Storage Policy: {{ policy_name | center(58) }} ║
+          ║  RAID Level:     {{ raid_level | center(58) }} ║
+          ║  Virtual Drive:  {{ virtual_drive.name | center(58) }} ║
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  WHAT THIS POLICY DOES                                                        ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  When applied to a server:                                                    ║
+          ║  1. Configures the RAID controller on {{ controller_slot }}
+          ║  2. Selects {{ drive_count }} SSD drives automatically
+          ║  3. Creates a {{ raid_level }} array named {{ virtual_drive.name }}
+          ║  4. Virtual drive uses all available space                                    ║
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  NEXT STEPS                                                                   ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  1. Verify in Intersight: Policies > Storage                                  ║
+          ║  2. Attach to a server profile                                                ║
+          ║                                                                               ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝
+      when: policy_state == "present"

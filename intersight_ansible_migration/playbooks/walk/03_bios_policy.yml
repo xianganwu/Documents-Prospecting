@@ -1,0 +1,217 @@
+---
+# =============================================================================
+# Playbook: BIOS Policy Management
+# =============================================================================
+# Purpose:     Create BIOS policies to standardize server BIOS settings across
+#              your fleet. Essential for consistent performance and security.
+#
+# Phase:       Walk (Intermediate)
+# Risk Level:  Medium - Creates Intersight resources
+#
+# Common Use Cases:
+#   - Enable virtualization extensions (VT-x, VT-d)
+#   - Configure power management for performance
+#   - Standardize security settings
+#   - Tune for specific workloads (HPC, VDI, databases)
+#
+# Usage:
+#   ansible-playbook playbooks/walk/03_bios_policy.yml --ask-vault-pass
+#
+#   # With custom profile
+#   ansible-playbook playbooks/walk/03_bios_policy.yml --ask-vault-pass \
+#     -e "bios_profile=high_performance"
+# =============================================================================
+
+- name: BIOS Policy Management
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  vars:
+    # Policy base configuration
+    policy_name: "Ansible-BIOS-VirtualizationOptimized"
+    policy_description: "BIOS policy optimized for virtualization workloads"
+    policy_state: "present"
+    target_organization: "default"
+    
+    # BIOS profile type: 'virtualization', 'high_performance', 'power_saving'
+    bios_profile: "virtualization"
+    
+    # ---------------------------------------------------------------------------
+    # BIOS Settings Profiles
+    # ---------------------------------------------------------------------------
+    # Each profile optimizes settings for specific workloads
+    # Settings use Intersight API values: 'enabled', 'disabled', 'platform-default'
+    # ---------------------------------------------------------------------------
+    bios_profiles:
+      virtualization:
+        name_suffix: "VirtualizationOptimized"
+        description: "Optimized for VMware ESXi, Hyper-V, KVM"
+        settings:
+          # CPU Virtualization
+          cpu_hardware_virt: "enabled"      # Intel VT-x / AMD-V
+          cpu_vt_d: "enabled"               # Direct I/O virtualization
+          sr_iov: "enabled"                 # Single Root I/O Virtualization
+          
+          # Performance
+          cpu_performance: "enterprise"     # CPU power/perf trade-off
+          cpu_power_management: "performance"
+          c_state: "enabled"               # CPU power states
+          
+          # Memory
+          numa_optimized: "enabled"
+          memory_size_limit: "platform-default"
+          
+          # Boot
+          post_error_pause: "disabled"      # Don't pause on non-fatal errors
+          
+      high_performance:
+        name_suffix: "HighPerformance"
+        description: "Maximum performance for HPC and databases"
+        settings:
+          cpu_hardware_virt: "enabled"
+          cpu_vt_d: "enabled"
+          sr_iov: "enabled"
+          cpu_performance: "high-throughput"
+          cpu_power_management: "performance"
+          c_state: "disabled"              # Disable power states for latency
+          numa_optimized: "enabled"
+          memory_size_limit: "platform-default"
+          post_error_pause: "disabled"
+          
+      power_saving:
+        name_suffix: "PowerEfficient"
+        description: "Balanced performance with power efficiency"
+        settings:
+          cpu_hardware_virt: "platform-default"
+          cpu_vt_d: "platform-default"
+          sr_iov: "platform-default"
+          cpu_performance: "balanced-performance"
+          cpu_power_management: "balanced-energy"
+          c_state: "enabled"
+          numa_optimized: "enabled"
+          memory_size_limit: "platform-default"
+          post_error_pause: "disabled"
+          
+  tasks:
+    # =========================================================================
+    # STEP 1: Set Profile-Specific Variables
+    # =========================================================================
+    - name: Select BIOS profile settings
+      ansible.builtin.set_fact:
+        active_profile: "{{ bios_profiles[bios_profile] }}"
+        final_policy_name: "Ansible-BIOS-{{ bios_profiles[bios_profile].name_suffix }}"
+        
+    - name: Display selected profile
+      ansible.builtin.debug:
+        msg: |
+          
+          ═══════════════════════════════════════════════════════════════════════
+          BIOS PROFILE: {{ bios_profile | upper }}
+          ═══════════════════════════════════════════════════════════════════════
+          
+          Policy Name: {{ final_policy_name }}
+          Description: {{ active_profile.description }}
+          
+          Key Settings:
+          ─────────────────────────────────────────────────────────────────────────
+          • CPU Virtualization (VT-x):  {{ active_profile.settings.cpu_hardware_virt }}
+          • VT-d (IOMMU):               {{ active_profile.settings.cpu_vt_d }}
+          • SR-IOV:                     {{ active_profile.settings.sr_iov }}
+          • Power Management:           {{ active_profile.settings.cpu_power_management }}
+          • C-States:                   {{ active_profile.settings.c_state }}
+          • NUMA Optimized:             {{ active_profile.settings.numa_optimized }}
+          ─────────────────────────────────────────────────────────────────────────
+
+    # =========================================================================
+    # STEP 2: Look up Organization
+    # =========================================================================
+    - name: Query organization
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /organization/Organizations
+        query_params:
+          $filter: "Name eq '{{ target_organization }}'"
+      register: org_query
+      
+    - name: Store organization Moid
+      ansible.builtin.set_fact:
+        org_moid: "{{ org_query.api_response.Results[0].Moid }}"
+        
+    # =========================================================================
+    # STEP 3: Create BIOS Policy
+    # =========================================================================
+    - name: Create/Update BIOS policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /bios/Policies
+        state: "{{ policy_state }}"
+        update_method: "patch"
+        
+        api_body:
+          Name: "{{ final_policy_name }}"
+          Description: "{{ active_profile.description }} - Created by Ansible"
+          
+          Organization:
+            Moid: "{{ org_moid }}"
+            ObjectType: organization.Organization
+            
+          # CPU Settings
+          CpuHwVirt: "{{ active_profile.settings.cpu_hardware_virt }}"
+          IntelVtForDirectedIo: "{{ active_profile.settings.cpu_vt_d }}"
+          SrIov: "{{ active_profile.settings.sr_iov }}"
+          CpuPerformance: "{{ active_profile.settings.cpu_performance }}"
+          CpuPowerManagement: "{{ active_profile.settings.cpu_power_management }}"
+          PackageCstateLimit: "{{ active_profile.settings.c_state }}"
+          
+          # Memory Settings
+          NumaOptimized: "{{ active_profile.settings.numa_optimized }}"
+          MemorySizeLimit: "{{ active_profile.settings.memory_size_limit }}"
+          
+          # Boot Settings
+          PostErrorPause: "{{ active_profile.settings.post_error_pause }}"
+          
+          # Tags
+          Tags:
+            - Key: "CreatedBy"
+              Value: "Ansible"
+            - Key: "BiosProfile"
+              Value: "{{ bios_profile }}"
+            - Key: "ManagedBy"
+              Value: "Ansible-Intersight-Migration"
+              
+      register: bios_result
+      when: policy_state == "present"
+      
+    # =========================================================================
+    # STEP 4: Display Results
+    # =========================================================================
+    - name: Display result
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    BIOS POLICY CREATED SUCCESSFULLY                           ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║                                                                               ║
+          ║  Policy Name:   {{ final_policy_name | center(58) }} ║
+          ║  Profile Type:  {{ bios_profile | center(58) }} ║
+          ║  Organization:  {{ target_organization | center(58) }} ║
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  USAGE                                                                        ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  To create other profiles, run:                                               ║
+          ║                                                                               ║
+          ║  # High Performance Profile                                                   ║
+          ║  ansible-playbook ... -e "bios_profile=high_performance"                      ║
+          ║                                                                               ║
+          ║  # Power Saving Profile                                                       ║
+          ║  ansible-playbook ... -e "bios_profile=power_saving"                          ║
+          ║                                                                               ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝
+      when: policy_state == "present"

@@ -1,0 +1,288 @@
+---
+# =============================================================================
+# Playbook: Server Profile Management
+# =============================================================================
+# Purpose:     Create server profiles that combine policies into deployable
+#              configurations. This is the capstone of the Walk phase.
+#
+# Phase:       Walk (Intermediate)  
+# Risk Level:  Medium-High - Creates profiles that can be deployed to servers
+#
+# What This Does:
+#   - Creates a server profile template
+#   - Attaches boot, BIOS, and storage policies
+#   - Optionally assigns to a physical server
+#   - Can trigger deployment
+#
+# Prerequisites:
+#   - Boot policy created (02_boot_policy.yml)
+#   - BIOS policy created (03_bios_policy.yml)
+#   - Storage policy created (04_storage_policy.yml)
+#   OR specify existing policy names
+#
+# Usage:
+#   # Create profile without assigning to server
+#   ansible-playbook playbooks/walk/05_server_profile.yml --ask-vault-pass
+#
+#   # Create and assign to specific server
+#   ansible-playbook playbooks/walk/05_server_profile.yml --ask-vault-pass \
+#     -e "assign_server=true" \
+#     -e "target_server_serial=FCH12345678"
+# =============================================================================
+
+- name: Server Profile Management
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  vars:
+    # Profile configuration
+    profile_name: "Ansible-ServerProfile-01"
+    profile_description: "Server profile created by Ansible - combines boot, BIOS, and storage policies"
+    profile_state: "present"
+    target_organization: "default"
+    
+    # Policies to attach (these should exist already)
+    boot_policy_name: "Ansible-Boot-LocalDisk"
+    bios_policy_name: "Ansible-BIOS-VirtualizationOptimized"
+    storage_policy_name: "Ansible-Storage-Default"
+    
+    # Server assignment (set to true and provide serial to assign)
+    assign_server: false
+    target_server_serial: ""
+    
+    # Deployment option
+    # Set to true to deploy immediately after creation/update
+    deploy_profile: false
+    
+  tasks:
+    # =========================================================================
+    # STEP 1: Look up Organization
+    # =========================================================================
+    - name: Query organization
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /organization/Organizations
+        query_params:
+          $filter: "Name eq '{{ target_organization }}'"
+      register: org_query
+      
+    - name: Store organization Moid
+      ansible.builtin.set_fact:
+        org_moid: "{{ org_query.api_response.Results[0].Moid }}"
+        
+    # =========================================================================
+    # STEP 2: Look up Existing Policies
+    # =========================================================================
+    - name: Query boot policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /boot/PrecisionPolicies
+        query_params:
+          $filter: "Name eq '{{ boot_policy_name }}'"
+      register: boot_policy
+      
+    - name: Query BIOS policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /bios/Policies
+        query_params:
+          $filter: "Name eq '{{ bios_policy_name }}'"
+      register: bios_policy
+      
+    - name: Query storage policy
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /storage/StoragePolicies
+        query_params:
+          $filter: "Name eq '{{ storage_policy_name }}'"
+      register: storage_policy
+      
+    # =========================================================================
+    # STEP 3: Validate Policies Exist
+    # =========================================================================
+    - name: Check policy availability
+      ansible.builtin.set_fact:
+        boot_policy_found: "{{ boot_policy.api_response.Results | length > 0 }}"
+        bios_policy_found: "{{ bios_policy.api_response.Results | length > 0 }}"
+        storage_policy_found: "{{ storage_policy.api_response.Results | length > 0 }}"
+        
+    - name: Display policy status
+      ansible.builtin.debug:
+        msg: |
+          
+          ═══════════════════════════════════════════════════════════════════════
+          POLICY LOOKUP RESULTS
+          ═══════════════════════════════════════════════════════════════════════
+          
+          Boot Policy ({{ boot_policy_name }}):
+            {% if boot_policy_found %}✅ Found (Moid: {{ boot_policy.api_response.Results[0].Moid }}){% else %}❌ Not found{% endif %}
+          
+          BIOS Policy ({{ bios_policy_name }}):
+            {% if bios_policy_found %}✅ Found (Moid: {{ bios_policy.api_response.Results[0].Moid }}){% else %}❌ Not found{% endif %}
+          
+          Storage Policy ({{ storage_policy_name }}):
+            {% if storage_policy_found %}✅ Found (Moid: {{ storage_policy.api_response.Results[0].Moid }}){% else %}❌ Not found{% endif %}
+          
+          ═══════════════════════════════════════════════════════════════════════
+          
+          {% if not (boot_policy_found and bios_policy_found and storage_policy_found) %}
+          ⚠️  Some policies are missing. Run these playbooks first:
+          {% if not boot_policy_found %}
+             - ansible-playbook playbooks/walk/02_boot_policy.yml --ask-vault-pass
+          {% endif %}
+          {% if not bios_policy_found %}
+             - ansible-playbook playbooks/walk/03_bios_policy.yml --ask-vault-pass
+          {% endif %}
+          {% if not storage_policy_found %}
+             - ansible-playbook playbooks/walk/04_storage_policy.yml --ask-vault-pass
+          {% endif %}
+          {% endif %}
+          
+    # =========================================================================
+    # STEP 4: Look up Target Server (if assigning)
+    # =========================================================================
+    - name: Query target server
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /compute/PhysicalSummaries
+        query_params:
+          $filter: "Serial eq '{{ target_server_serial }}'"
+      register: target_server
+      when: assign_server | bool and target_server_serial != ""
+      
+    # =========================================================================
+    # STEP 5: Create Server Profile
+    # =========================================================================
+    - name: Create/Update server profile
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: /server/Profiles
+        state: "{{ profile_state }}"
+        update_method: "patch"
+        
+        api_body:
+          Name: "{{ profile_name }}"
+          Description: "{{ profile_description }}"
+          TargetPlatform: "Standalone"  # or "FIAttached" for Fabric Interconnect
+          
+          Organization:
+            Moid: "{{ org_moid }}"
+            ObjectType: organization.Organization
+            
+          # Attach policies via PolicyBucket
+          PolicyBucket:
+            # Boot Policy
+            - Moid: "{{ boot_policy.api_response.Results[0].Moid }}"
+              ObjectType: boot.PrecisionPolicy
+            # BIOS Policy  
+            - Moid: "{{ bios_policy.api_response.Results[0].Moid }}"
+              ObjectType: bios.Policy
+            # Storage Policy
+            - Moid: "{{ storage_policy.api_response.Results[0].Moid }}"
+              ObjectType: storage.StoragePolicy
+              
+          # Tags
+          Tags:
+            - Key: "CreatedBy"
+              Value: "Ansible"
+            - Key: "ManagedBy"
+              Value: "Ansible-Intersight-Migration"
+            - Key: "Stage"
+              Value: "Walk-Phase"
+              
+      register: profile_result
+      when: 
+        - profile_state == "present"
+        - boot_policy_found
+        - bios_policy_found
+        - storage_policy_found
+        
+    # =========================================================================
+    # STEP 6: Assign Server (if requested)
+    # =========================================================================
+    - name: Assign server to profile
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        resource_path: "/server/Profiles/{{ profile_result.api_response.Moid }}"
+        state: "present"
+        update_method: "patch"
+        
+        api_body:
+          AssignedServer:
+            Moid: "{{ target_server.api_response.Results[0].Moid }}"
+            ObjectType: "{{ target_server.api_response.Results[0].SourceObjectType }}"
+            
+      register: assign_result
+      when:
+        - assign_server | bool
+        - target_server is defined
+        - target_server.api_response.Results | length > 0
+        - profile_result is succeeded
+        
+    # =========================================================================
+    # STEP 7: Display Results
+    # =========================================================================
+    - name: Display success result
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    SERVER PROFILE CREATED SUCCESSFULLY                        ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║                                                                               ║
+          ║  Profile Name:   {{ profile_name | center(58) }} ║
+          ║  Organization:   {{ target_organization | center(58) }} ║
+          ║  Platform:       Standalone                                                   ║
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  ATTACHED POLICIES                                                            ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  ✅ Boot Policy:    {{ boot_policy_name }}
+          ║  ✅ BIOS Policy:    {{ bios_policy_name }}
+          ║  ✅ Storage Policy: {{ storage_policy_name }}
+          ║                                                                               ║
+          {% if assign_server | bool and target_server is defined and target_server.api_response.Results | length > 0 %}
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  SERVER ASSIGNMENT                                                            ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  ✅ Assigned to: {{ target_server.api_response.Results[0].Name }} ({{ target_server_serial }})
+          ║                                                                               ║
+          {% endif %}
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║  NEXT STEPS                                                                   ║
+          ║  ───────────────────────────────────────────────────────────────────────────  ║
+          ║  1. Verify in Intersight UI: Profiles > UCS Server Profiles                   ║
+          ║  2. To assign to a server manually or via playbook                            ║
+          ║  3. Deploy the profile to apply configuration                                 ║
+          ║                                                                               ║
+          ║  To assign a server via command line:                                         ║
+          ║  ansible-playbook playbooks/walk/05_server_profile.yml --ask-vault-pass \     ║
+          ║    -e "assign_server=true" \                                                  ║
+          ║    -e "target_server_serial=FCH12345678"                                      ║
+          ║                                                                               ║
+          ╠══════════════════════════════════════════════════════════════════════════════╣
+          ║                    WALK PHASE COMPLETE!                                       ║
+          ║                                                                               ║
+          ║  You have successfully:                                                       ║
+          ║  ☑ Created boot, BIOS, and storage policies                                   ║
+          ║  ☑ Combined policies into a server profile                                    ║
+          ║  ☑ Learned the policy-as-code approach                                        ║
+          ║                                                                               ║
+          ║  Ready for production automation? → docs/05_run_phase.md                      ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝
+      when: profile_result is succeeded

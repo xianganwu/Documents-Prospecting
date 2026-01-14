@@ -1,0 +1,86 @@
+---
+# =============================================================================
+# Role: Intersight Common
+# =============================================================================
+# This role provides reusable tasks for Intersight operations.
+# Use it in your playbooks to simplify common patterns.
+#
+# Usage in playbook:
+#   roles:
+#     - role: intersight_common
+#       vars:
+#         operation: "get_servers"
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Task: Get Organization Moid
+# -----------------------------------------------------------------------------
+- name: "{{ task_prefix | default('') }} Query organization Moid"
+  cisco.intersight.intersight_rest_api:
+    api_private_key: "{{ intersight_api_private_key }}"
+    api_key_id: "{{ intersight_api_key_id }}"
+    api_uri: "{{ intersight_api_uri }}"
+    resource_path: /organization/Organizations
+    query_params:
+      $filter: "Name eq '{{ target_organization | default('default') }}'"
+  register: org_query
+  when: operation == "get_org" or operation == "all"
+  
+- name: Store organization Moid
+  ansible.builtin.set_fact:
+    org_moid: "{{ org_query.api_response.Results[0].Moid }}"
+  when: 
+    - org_query is defined
+    - org_query.api_response.Results | length > 0
+
+# -----------------------------------------------------------------------------
+# Task: Get All Servers
+# -----------------------------------------------------------------------------
+- name: "{{ task_prefix | default('') }} Query all physical servers"
+  cisco.intersight.intersight_rest_api:
+    api_private_key: "{{ intersight_api_private_key }}"
+    api_key_id: "{{ intersight_api_key_id }}"
+    api_uri: "{{ intersight_api_uri }}"
+    resource_path: /compute/PhysicalSummaries
+    query_params:
+      $top: "{{ max_servers | default(1000) }}"
+      $orderby: "Name asc"
+  register: all_servers
+  when: operation == "get_servers" or operation == "all"
+
+# -----------------------------------------------------------------------------
+# Task: Validate Policy Exists
+# -----------------------------------------------------------------------------
+- name: "{{ task_prefix | default('') }} Validate policy exists"
+  cisco.intersight.intersight_rest_api:
+    api_private_key: "{{ intersight_api_private_key }}"
+    api_key_id: "{{ intersight_api_key_id }}"
+    api_uri: "{{ intersight_api_uri }}"
+    resource_path: "{{ policy_path }}"
+    query_params:
+      $filter: "Name eq '{{ policy_name }}'"
+  register: policy_check
+  when: operation == "validate_policy"
+  
+- name: Fail if policy not found
+  ansible.builtin.fail:
+    msg: "Policy '{{ policy_name }}' not found at {{ policy_path }}"
+  when:
+    - operation == "validate_policy"
+    - policy_check.api_response.Results | length == 0
+
+# -----------------------------------------------------------------------------
+# Task: Apply Standard Tags
+# -----------------------------------------------------------------------------
+- name: Build standard tags
+  ansible.builtin.set_fact:
+    standard_tags:
+      - Key: "CreatedBy"
+        Value: "Ansible"
+      - Key: "ManagedBy"
+        Value: "Ansible-Intersight"
+      - Key: "CreatedAt"
+        Value: "{{ ansible_date_time.iso8601 | default('unknown') }}"
+      - Key: "Environment"
+        Value: "{{ environment | default('Production') }}"
+  when: operation == "build_tags" or operation == "all"

@@ -1,0 +1,96 @@
+---
+# =============================================================================
+# Intersight Dynamic Inventory Configuration
+# =============================================================================
+# This file configures the Intersight dynamic inventory plugin.
+# It automatically discovers and groups servers from your Intersight account.
+#
+# Usage:
+#   ansible-inventory -i inventory/intersight.yml --list
+#   ansible-playbook -i inventory/intersight.yml your_playbook.yml
+#
+# Note: Requires cisco.intersight collection installed
+# =============================================================================
+
+plugin: cisco.intersight.intersight
+
+# -----------------------------------------------------------------------------
+# API Connection Settings
+# -----------------------------------------------------------------------------
+# These can be set here or inherited from environment variables:
+#   INTERSIGHT_API_KEY_ID
+#   INTERSIGHT_API_PRIVATE_KEY (path to file)
+# -----------------------------------------------------------------------------
+
+# api_key_id: "{{ lookup('env', 'INTERSIGHT_API_KEY_ID') }}"
+# api_private_key: "{{ lookup('file', lookup('env', 'INTERSIGHT_API_PRIVATE_KEY')) }}"
+
+# -----------------------------------------------------------------------------
+# Server Discovery Settings
+# -----------------------------------------------------------------------------
+
+# Include all server types
+server_types:
+  - compute.Blade
+  - compute.RackUnit
+
+# -----------------------------------------------------------------------------
+# Grouping Configuration
+# -----------------------------------------------------------------------------
+# Create Ansible groups based on server attributes
+# This allows targeting specific servers in playbooks
+# -----------------------------------------------------------------------------
+
+# Group by management mode
+keyed_groups:
+  - key: ManagementMode
+    prefix: mode
+    separator: "_"
+    
+  - key: Model
+    prefix: model
+    separator: "_"
+    
+  - key: OperPowerState
+    prefix: power
+    separator: "_"
+
+# -----------------------------------------------------------------------------
+# Host Variables
+# -----------------------------------------------------------------------------
+# These Intersight attributes will be available as host variables
+# Access them in playbooks as hostvars[inventory_hostname]['attribute']
+# -----------------------------------------------------------------------------
+
+compose:
+  ansible_host: Name
+  intersight_moid: Moid
+  serial_number: Serial
+  model: Model
+  firmware_version: Firmware
+  power_state: OperPowerState
+  management_mode: ManagementMode
+  cpu_cores: NumCpuCores
+  memory_gb: "{{ AvailableMemory | int / 1024 | round(0) }}"
+
+# -----------------------------------------------------------------------------
+# Filtering
+# -----------------------------------------------------------------------------
+# Only include servers matching these criteria
+# Uncomment and modify as needed
+# -----------------------------------------------------------------------------
+
+# filters:
+#   - ManagementMode eq 'Intersight'
+#   - OperPowerState eq 'power-on'
+
+# -----------------------------------------------------------------------------
+# Caching
+# -----------------------------------------------------------------------------
+# Enable caching to improve performance for large inventories
+# -----------------------------------------------------------------------------
+
+cache: true
+cache_plugin: jsonfile
+cache_timeout: 3600  # 1 hour
+cache_connection: /tmp/intersight_inventory_cache

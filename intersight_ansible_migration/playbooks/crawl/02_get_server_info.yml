@@ -1,0 +1,197 @@
+---
+# =============================================================================
+# Playbook: Get Server Information
+# =============================================================================
+# Purpose:     Query Intersight for all physical servers and display a summary.
+#              This is typically the first "useful" playbook you'll run.
+#
+# Phase:       Crawl (Beginner)
+# Risk Level:  None - Read-only operation
+#
+# What You'll Learn:
+#   - How to query the compute/PhysicalSummaries endpoint
+#   - How to process list responses from the API
+#   - How to use loops and filters in Ansible
+#   - How to format output for readability
+#
+# Usage:
+#   ansible-playbook playbooks/crawl/02_get_server_info.yml --ask-vault-pass
+#
+# Optional Parameters:
+#   -e "server_filter='Name eq \"MyServer\"'"  # Filter to specific server
+#   -e "max_servers=10"                        # Limit number of results
+# =============================================================================
+
+- name: Get Intersight Server Information
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  # ---------------------------------------------------------------------------
+  # Default Variables
+  # ---------------------------------------------------------------------------
+  # These can be overridden with -e "variable=value" on the command line
+  # ---------------------------------------------------------------------------
+  vars:
+    # Maximum number of servers to retrieve (set to 1000 for all)
+    max_servers: 100
+    
+    # Optional filter - leave empty to get all servers
+    # Examples:
+    #   "Name eq 'Server01'"
+    #   "Serial eq 'FCH12345678'"
+    #   "OperState eq 'power-on'"
+    server_filter: ""
+    
+    # Fields to display in the summary
+    display_fields:
+      - Name
+      - Serial
+      - Model
+      - ManagementMode
+      - OperPowerState
+      
+  tasks:
+    # =========================================================================
+    # TASK 1: Query Server Information
+    # =========================================================================
+    # The /compute/PhysicalSummaries endpoint returns a consolidated view of
+    # all physical servers. This is more efficient than querying individual
+    # server endpoints.
+    # =========================================================================
+    - name: Query all physical servers from Intersight
+      cisco.intersight.intersight_rest_api:
+        api_private_key: "{{ intersight_api_private_key }}"
+        api_key_id: "{{ intersight_api_key_id }}"
+        api_uri: "{{ intersight_api_uri }}"
+        
+        # Physical Summaries endpoint - aggregates server data
+        resource_path: /compute/PhysicalSummaries
+        
+        # Query parameters
+        query_params:
+          # Limit number of results
+          $top: "{{ max_servers }}"
+          
+          # Sort by name for consistent output
+          $orderby: "Name asc"
+          
+          # Apply filter if provided
+          # The 'omit' filter removes the parameter if server_filter is empty
+          $filter: "{{ server_filter | default(omit, true) if server_filter else omit }}"
+          
+      register: servers
+      
+    # =========================================================================
+    # TASK 2: Display Summary Header
+    # =========================================================================
+    - name: Display server inventory header
+      ansible.builtin.debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║           INTERSIGHT SERVER INVENTORY SUMMARY                     ║
+          ╠══════════════════════════════════════════════════════════════════╣
+          ║  Total Servers Found: {{ servers.api_response.Results | length | string | center(42) }}  ║
+          ║  Query Time: {{ ansible_date_time.iso8601 | default("N/A") | center(48) }}  ║
+          ╚══════════════════════════════════════════════════════════════════╝
+
+    # =========================================================================
+    # TASK 3: Handle No Servers Found
+    # =========================================================================
+    - name: Handle case when no servers found
+      ansible.builtin.debug:
+        msg: |
+          ⚠️  No servers found in Intersight.
+          
+          Possible reasons:
+          - No servers are registered to your Intersight account
+          - Your API key doesn't have access to view servers
+          - Your filter '{{ server_filter }}' didn't match any servers
+          
+          To troubleshoot:
+          1. Log into Intersight UI and verify servers are visible
+          2. Check your organization permissions
+          3. Try running without a filter
+      when: servers.api_response.Results | length == 0
+      
+    # =========================================================================
+    # TASK 4: Display Each Server
+    # =========================================================================
+    # This task loops through each server and displays key information.
+    # The 'loop' keyword iterates over the Results array.
+    # =========================================================================
+    - name: Display individual server details
+      ansible.builtin.debug:
+        msg: |
+          ┌────────────────────────────────────────────────────────────────────
+          │ SERVER: {{ item.Name | default('Unknown') }}
+          ├────────────────────────────────────────────────────────────────────
+          │  Serial Number:    {{ item.Serial | default('N/A') }}
+          │  Model:            {{ item.Model | default('N/A') }}
+          │  Management Mode:  {{ item.ManagementMode | default('N/A') }}
+          │  Power State:      {{ item.OperPowerState | default('N/A') }}
+          │  Admin State:      {{ item.AdminPowerState | default('N/A') }}
+          │  CPU Cores:        {{ item.NumCpuCores | default('N/A') }}
+          │  Memory (GB):      {{ (item.AvailableMemory | default(0) / 1024) | round(0) | int }}
+          │  Firmware:         {{ item.Firmware | default('N/A') }}
+          │  Moid:             {{ item.Moid | default('N/A') }}
+          └────────────────────────────────────────────────────────────────────
+      loop: "{{ servers.api_response.Results }}"
+      loop_control:
+        # Add a label to make the loop output cleaner
+        label: "{{ item.Name | default('Unknown') }}"
+      when: servers.api_response.Results | length > 0
+      
+    # =========================================================================
+    # TASK 5: Display Summary Statistics
+    # =========================================================================
+    # Uses Jinja2 filters to calculate statistics from the server list
+    # =========================================================================
+    - name: Display summary statistics
+      ansible.builtin.debug:
+        msg: |
+          
+          ══════════════════════════════════════════════════════════════════════
+          SUMMARY STATISTICS
+          ══════════════════════════════════════════════════════════════════════
+          
+          Power States:
+          {% set powered_on = servers.api_response.Results | selectattr('OperPowerState', 'equalto', 'power-on') | list | length %}
+          {% set powered_off = servers.api_response.Results | selectattr('OperPowerState', 'equalto', 'power-off') | list | length %}
+            - Powered On:  {{ powered_on }}
+            - Powered Off: {{ powered_off }}
+            - Other:       {{ (servers.api_response.Results | length) - powered_on - powered_off }}
+          
+          Management Modes:
+          {% for mode in servers.api_response.Results | map(attribute='ManagementMode') | unique %}
+          {% set count = servers.api_response.Results | selectattr('ManagementMode', 'equalto', mode) | list | length %}
+            - {{ mode }}: {{ count }}
+          {% endfor %}
+          
+          ══════════════════════════════════════════════════════════════════════
+      when: servers.api_response.Results | length > 0
+      
+    # =========================================================================
+    # TASK 6: Export to File (Optional)
+    # =========================================================================
+    # Saves the raw server data to a JSON file for further processing
+    # =========================================================================
+    - name: Save server data to JSON file
+      ansible.builtin.copy:
+        content: "{{ servers.api_response.Results | to_nice_json }}"
+        dest: "{{ playbook_dir }}/../../output/server_inventory.json"
+        mode: '0644'
+      register: file_saved
+      ignore_errors: true  # Don't fail if output directory doesn't exist
+      
+    - name: Notify about saved file
+      ansible.builtin.debug:
+        msg: |
+          📁 Server data saved to: {{ playbook_dir }}/../../output/server_inventory.json
+          
+          You can use this file for:
+          - Importing into spreadsheets
+          - Processing with jq or Python
+          - Comparing inventory over time
+      when: file_saved is succeeded

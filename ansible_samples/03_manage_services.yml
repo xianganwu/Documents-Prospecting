@@ -1,0 +1,23 @@
+---
+# 03_manage_services.yml
+# This playbook shows how to manage system services (start, stop, enable).
+
+- name: Manage Services
+  hosts: all
+  become: true
+
+  tasks:
+    # Note: This assumes Nginx is installed. If not, this task might fail.
+    # In a real playbook, you'd install it first (like in 02_install_packages.yml).
+    - name: Ensure Nginx is started and enabled at boot
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+      ignore_errors: true # Added so this playbook doesn't hard fail if nginx isn't installed
+      
+    - name: Restart Nginx (example)
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+      ignore_errors: true

@@ -1,0 +1,27 @@
+---
+# 04_file_manipulation.yml
+# This playbook demonstrates copying files and managing file permissions.
+
+- name: File Manipulation Examples
+  hosts: all
+
+  tasks:
+    - name: Create a directory
+      ansible.builtin.file:
+        path: /tmp/ansible_demo
+        state: directory
+        mode: '0755'
+
+    - name: Copy a file to the remote host
+      ansible.builtin.copy:
+        content: "Hello from Ansible!\n"
+        dest: /tmp/ansible_demo/hello.txt
+        mode: '0644'
+      # 'content' allows inline text. Use 'src' to copy a local file:
+      # src: ./files/my_config.conf
+
+    - name: Change permissions of a file
+      ansible.builtin.file:
+        path: /tmp/ansible_demo/hello.txt
+        owner: "{{ ansible_user_id }}" # Uses a gathered fact (if facts are gathered)
+        mode: '0600'

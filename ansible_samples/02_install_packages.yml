@@ -1,0 +1,26 @@
+---
+# 02_install_packages.yml
+# This playbook demonstrates how to manage software packages.
+
+- name: Manage Packages
+  hosts: all
+  become: true # Required to install packages (sudo)
+
+  tasks:
+    - name: Ensure git is installed
+      ansible.builtin.package:
+        name: git
+        state: present
+      # 'package' is a generic module that calls apt, yum, dnf, etc. depending on the OS.
+      
+    - name: Ensure tree is installed
+      ansible.builtin.package:
+        name: tree
+        state: present
+
+    # You can also use specific modules if you prefer:
+    # - name: Install nginx (Debian/Ubuntu)
+    #   ansible.builtin.apt:
+    #     name: nginx
+    #     state: present
+    #   when: ansible_os_family == "Debian"
