@@ -1,1 +1,4 @@
-/cencora_network_automation_campaign.md
+Zoom/
+*.zoom
+*.tmp
+.DS_Store
