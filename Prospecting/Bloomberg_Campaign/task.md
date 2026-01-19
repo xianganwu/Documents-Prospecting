@@ -1,0 +1,4 @@
+- [x] Research Ranga Sam and Richard McLeod (confirm context)
+- [x] Create Matrix Sales Journey Map (AE vs SA vs Specialist roles)
+- [x] Draft targeted messaging for Ranga (Networking) and Richard (x86 Homegrown)
+- [x] Create README.md summarizing the entire Bloomberg folder package
