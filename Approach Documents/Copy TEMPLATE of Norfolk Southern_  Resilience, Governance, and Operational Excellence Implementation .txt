@@ -1,0 +1,267 @@
+﻿________________________________________________________
+
+
+The Platform Operating Model: Delivering Resilience, Governance 
+& Operational Excellence
+
+
+
+
+________________________________________________________
+
+
+
+
+
+
+Proposed Partnership Plan
+March 2024
+________________
+
+
+
+
+Confidentiality Clause
+The information presented in this document is exclusively confidential to Red Hat, Inc.  It has been made available to CUSTOMER for its consideration and review of Red Hat’s subscription and service offerings.  In no event shall all or any part of this document be disclosed or disseminated without the express written permission of Red Hat, Inc. The holder of this document may not utilize Red Hat’s name in any correspondence to any party concerning this document or anything pertaining to this document without the express consent of Red Hat, Inc.
+Copyright and Disclaimer
+Copyright © 2024 by Red Hat, Inc. of Raleigh, NC.  All rights reserved.  No part of the work covered by the copyright herein may be reproduced or used in any form or by any means – graphic, electronic, or mechanical, including photocopying, recording, taping, or information storage and retrieval systems – without permission in writing from Red Hat Consulting.
+This document is not a quote & does not include any binding commitments by Red Hat. The information presented in this document has been made available to CUSTOMER for consideration and review of Red Hat’s technology solutions offering. 
+Red Hat Account Team
+Account Manager
+Tanner Kotch
+	Solution Architect
+Lynn Dixon
+	Services Manager
+Ben Freeman
+	Cloud and App Dev Specialist
+Chris Norton
+	Customer Success
+Stephanie Mello
+	App Dev Solutions Architect
+Naveen Kendyala
+	Ansible Automation Specialist
+Kenny Schermer
+	Business Value Practice
+Mackie Corbett
+	Business Value Practice
+Rod Belentani
+	
+
+________________
+1. CURRENT STATE AND BUSINESS OBJECTIVES
+Red Hat has been a longstanding partner with Norfolk Southern, collaborating on Linux, HPC environments, and more. Initially, Norfolk Southern sought to cut capital and operational costs by adopting Red Hat's open-source subscription model, replacing expensive proprietary software stacks that demanded hefty upfront investments in licensing. With the absence of upfront license fees, the scalability of open-source software aligns with subscription models, offering a flexible purchasing approach.
+The partnership has not only yielded considerable savings but has also extended to collaboration on Norfolk Southern's Container Platform, Release Engineering, and Development teams for containerization and platform implementation. In recent years, Red Hat's role has evolved beyond cost savings, delving into the heart of innovation within the open-source development model, particularly for emerging cloud technologies. The maturity of this model has enabled Red Hat to deliver cloud and management solutions that not only drive business value but also enhance application time-to-market and operational support efficiency.
+However, recent support incidents have underscored the need to enhance the resiliency, governance, and controls of Norfolk Southern's Container Platform Service and surrounding infrastructure, which hosts critical business applications. Despite external factors causing the incident in question, it resulted in service disruptions for customers relying on applications hosted on the platform, emphasizing the potential impact on train operations with extended unavailability.
+In response, Red Hat proposes improvements in three critical areas:
+1. Service Resiliency and Reliability Risks
+The current resiliency approach involves a full disaster recovery (DR) migration impacting all applications, proving time-consuming, resource-intensive, and error-prone. This proposal aims to offer more efficient options to minimize business impact and risk.
+2. Governance and Accountability Risks
+An outdated Configuration Management Database (CMDB) hinders risk analysis and identification of single points of failure. This proposal seeks to update the CMDB for improved visibility, traceability, and accurate Mean Time to Identification and Mean Time to Recovery.
+3. Standardization and Repeatability Risks
+Procedural updates reliant on individual knowledge pose risks of misconfiguration and inconsistency. Red Hat proposes enforcing standardized processes for greater reliability, reducing the potential impact of errors, and ensuring consistent performance aligned with Service Level Agreements (SLAs).
+________________
+
+
+Advancements in these key areas will lead to project goals summarized below and detailed later in this document. What we know to be important to Norfolk Southern and the desired outcome of this implementation would be the following:
+* Resilient Workload Placement: Streamline the process for customers to determine optimal workload placement for peak performance and to facilitate the adoption/integration of current technology.
+* Reduce Risk Within Operations: Simplify and enhance day-to-day operations for staff, minimizing risks in provisioning, patching, and ongoing upgrades. Aim to decrease the blast radius when incidents occur.
+* Accelerate CMDB Maturity: Establish a robust process for maturing an enterprise Configuration Management Database (CMDB). Develop a long-term strategy for consistent updates to track all changes, aligning with evolving legal requirements.
+* Create Automated Controls and Governance: Enable effective controls and governance to mitigate operational risks while maintaining a rapid pace in delivering essential business functionality.
+* Scaling to Dynamic Business Needs: Enhance scalability to align with fluctuating business demands and optimize spending accordingly.
+* Framework Definition: Define a robust framework through guidance, architectural support, and hands-on consulting. Ensure that any *as-a-Service environment delivers long-term value and remains supportable through future upgrades and updates.
+* Accelerate Time-to-Market: Provide resources to significantly reduce the time it takes to turn ideas into results. Leverage cutting-edge technology and methodologies for both stateful and ephemeral workloads, enabling researchers to embrace innovation.
+
+
+
+
+________________
+2. INITIATIVES, BUSINESS IMPACT & ENABLERS
+
+
+1. Reduce Risk Within Operations With Automated Governance & Controls
+
+
+Simplify and enhance day-to-day operations while minimizing risks in provisioning, patching, and ongoing upgrades. Aim to decrease the blast radius when incidents occur.
+
+
+Business Impact (Governance, Resilience, & Stability)
+	Recommended Services
+	Red Hat, a top provider of process and application automation software, streamlines the entire management process of Linux and Windows workloads. This approach ensures automated operations from the beginning (Day 1) and continues through maintenance and scaling (Day 2). It emphasizes proactive measures to significantly reduce operational risks. These strategies are designed to streamline operations, enhance security, and promote innovation, making IT management more efficient and effective. Here's what Red Hat aims to achieve:
+Implementing repeatable workflows for uniform configuration management across hybrid infrastructures.
+Establishing baseline system settings to minimize variations and downtime. This is done through consistent patch management, installations, and updates, ensuring systems are always up to date.
+Automating the security patching process and applying consistent settings across all systems, whether they are located on-premise or in the cloud.
+Migrating to a single, adaptable platform replaces the need for multiple disparate solutions. This simplification enables faster adaptation to changes and reduces the time spent on routine tasks. 
+
+
+
+
+	Red Hat Ansible Automation Platform
+Red Hat Consulting Services
+Multi-tier workflow builds Integration(s)
+	________________
+
+
+2. Accelerate CMDB Maturity
+
+
+Streamline the process to update the enterprise Configuration Management Database (CMDB) with precise and current information. This will enable the entire organization to access configuration data, helping to proactively prevent issues and efficiently address incidents when they occur.
+
+
+Business Impact (Governance, Resilience, & Stability)
+	Recommended Services
+	With over 30 years of experience in software development, Red Hat boasts more strategic partnerships with ecosystem providers than any other automation firm in the industry. These partnerships are particularly focused on integrating with IT Service Management (ITSM) and CMDB tools from vendors like ServiceNow. Red Hat is committed to collaborating closely with Norfolk Southern to ensure that all necessary configuration items are accurately and effectively documented in compliance with all requirements while achieving seamless integration with the company's existing toolset.
+Beyond IT infrastructure management, Red Hat's solutions will also enhance the current application platform by seamlessly incorporating essential data from OpenShift into ServiceNow.
+* Implement Integration between ServiceNow and the Ansible Automation Platform and Initiate fact-gathering automation jobs to return system-level metadata to ServiceNow CMDB to establish the initial source of truth and accelerate operational readiness. 
+* Enable full “closed loop” automation. Simplify the opening, advancement, and resolution of IT service management workflow items while keeping relevant and accurate information flowing into the CMDB across disparate users, teams, and assets. Ensure that infrastructure information is always up to date, actionable, and auditable while work is completed by cross-domain teams that may or may not have access to ServiceNow
+	Red Hat Ansible Automation Platform
+Red Hat OpenShift Portfolio Plus 
+Red Hat Advanced Cluster Manager
+
+
+	________________
+3. Mitigate & Control Large-Scale Network / Security Outages 
+Implement stable and reliable processes/workflows for customers to determine optimal workload placement for peak performance and to facilitate the adoption/integration of current technology. Reduce friction between organizations and enable governed changes for security responses based on data ingested from company security resources.
+
+
+Business Impact (Governance, Resilience, & Stability)
+	Recommended Services
+	In addition to the infrastructure tasks previously mentioned, the networking team will benefit from Red Hat solutions in several ways. These advanced capabilities are planned for a second phase of deployment. During this phase, the networking team will adopt a unified approach to automation. This strategy aims to reduce costs and risks across organizations while minimizing manual labor. These benefits include:
+* Supporting next-generation network operations more effectively.
+* Utilizing network validation use cases.
+* Reducing Mean Time To Repair (MTTR) by quickly identifying and fixing vulnerabilities.
+* Improving management of network infrastructure using Infrastructure as Code (IaC) principles.
+* Enforcing configuration policies and automatically updating the Configuration Management Database (CMDB).
+* Extending automation to network edge devices.
+* Facilitating collaboration between network and cloud-expert teams.
+	Red Hat Ansible Automation Platform
+Red Hat OpenShift Portfolio Plus 
+Red Hat Advanced Cluster Manager
+	________________
+4. Resilient Workload Placement within The Application Platform Service
+
+The recent support incidents underscore the critical need to enhance the resilience, governance, and controls of Norfolk Southern's Container Platform Service, which hosts vital business applications. We've discovered that the applications on this platform play a pivotal role in train operations, and any unavailability could lead to disruptive train stoppages. Quantifying the cost of such stoppages is challenging.
+
+
+Business Impact (Governance, Resilience, & Stability)
+	Recommended Services
+	To mitigate this risk, Red Hat recommends implementing a platform operating model for the OpenShift environment. This model focuses on three key areas:
+Service Resiliency and Reliability: Currently, the sole resiliency option involves a full disaster recovery (DR) migration, impacting all applications in the environment. This approach is time-consuming, resource-intensive, error-prone, and escalates business impact and risk across all hosted applications. A more effective strategy is needed.
+Governance and Accountability: The Configuration Management Database (CMDB) documenting platform integrations and relationships is outdated, hampering accurate risk analysis and identification of single points of failure. The lack of visibility and traceability of platform changes negatively affects the Mean Time to Identification and Mean Time to Recovery. Updating the CMDB is crucial for informed decision-making.
+Standardization and Repeatability: Current procedural updates to systems, infrastructure, and configurations rely on "tribal knowledge," posing a significant risk of misconfiguration due to human error. The absence of standardized processes, tested and validated, exacerbates inconsistency across the environment. An incomplete CMDB and reliance on individual expertise increase the risk of typos impacting mission-critical applications. Moreover, variations in configurations for similar application architectures lead to unexpected performance behaviors and potential outages, contrary to expected SLAs.
+Implementing a robust platform operating model will address these issues, enhance overall reliability, and fortify Norfolk Southern's Container Platform Service against potential disruptions.
+	Red Hat Ansible Automation Platform
+Red Hat OpenShift Portfolio Plus 
+Red Hat Advanced Cluster Manager
+Platform Operating Model Services Engagements.
+	________________
+5. Scaling to Dynamic Business Needs With SAP Automation
+
+
+Free up SAP teams to focus on strategic and critical business operations and shrink deployment timelines, reduce unplanned downtime, and bring services to market faster.
+Business Impact (Governance, Resilience, & Stability)
+	Recommended Services
+	Red Hat has a strategic partnership with SAP and has been dramatically growing.  As the leading base operating system, Red Hat is also identifying use cases for automation.  The statistics below represent only one use case where 4 weeks of labor can be saved and done with precision.  In the appendix, the outside-in viewpoint of SAP automation with Red Hat is shown from an enterprise view. 
+	Red Hat Ansible Automation Platform
+Red Hat Consulting Services
+	________________
+
+
+3. BUSINESS IMPACT TO NORFOLK SOUTHERN
+
+
+SCENARIO A: Operational Risk via Automated Governance & Controls
+* Enhanced Efficiency: Implementing repeatable workflows for uniform configuration management across hybrid infrastructures, which is expected to save up to 8,346 hours, improving efficiency by 3.3%.
+* System Stability: Establishing baseline system settings to minimize variations and downtime. This is done through consistent patch management, installations, and updates, ensuring systems are always up to date.
+* Improved Security: Automating the security patching process and applying consistent settings across all systems, whether they are located on-premise or in the cloud. This approach aims to comply with regulations and reduce unplanned downtime by approximately 2,177 hours, a 76% improvement.
+* Platform Consolidation: Migrating to a single, adaptable platform replaces the need for multiple disparate solutions. This simplification enables faster adaptation to changes and reduces the time spent on routine tasks. With Event Driven Automation and integrations, it's expected to enhance IT management efficiency by 30%, saving over 54,118 hours.
+Total Savings Over Infrastructure Workloads 64,731 hours / $14.5M
+
+
+SCENARIO B: SAP Automation (Based on 1 Live NS: SAP Use Case) 
+* Reduce OES patching & manual start/stop process from 200 minutes for all 38 web dispatcher servers (Sandbox, Dev, Quality, Pre-Prod and Prod) on a monthly basis by 90% - completing the same process in just 19 minutes. Total Savings – 36 Hrs.
+* Reduce SDI Agent Start Stop (Linux) from 75 minutes to complete the start/stop process for all 13 SDI Agents on 7 Linux servers (Sandbox, Dev, Quality, Pre-Prod and Prod) on a monthly basis by 80% - completing the same process in just 15 minutes. Total Savings – 12 Hrs
+* Reduce SAP Kernel Upgrade (Linux)  of all 50 Web-Dispatchers from 100 hrs by 87% to 13 hrs. Total Savings Over SAP Workloads = 135 hrs (Based on 1 NS use case)
+________________
+
+
+4. BUSINESS VALUE OF RED HAT SOLUTIONS 
+
+
+Red Hat OpenShift Container Platform
+Source: IDC White Paper, sponsored by Red Hat. “The Business Value of Red Hat OpenShift” - Document #US47539121, March 2021.
+  
+Red Hat Ansible Automation Platform
+  Source: IDC White Paper, Sponsored by Red Hat. “The Business Value of Red Hat Ansible Automation Platform.” Document  #US48678022, Oct 2021.
+________________
+
+
+5. CUSTOMER REFERENCES  
+  ________________
+________________
+6. RED HAT RECOMMENDATIONS
+Implement resiliency, reliability, and stability plans at Norfolk Southern (On-Prem, in the Cloud, at the Edge). Based on Red Hat’s current knowledge of Norfolk Southern’s environment and procedures, Red Hat has the following recommendations to minimize or mitigate the risks identified above.l
+
+
+1. Service Resiliency and Reliability Recommendation
+The Container Platform Environment hosts a variety of workloads, some being mission-critical with strict availability requirements, while others may have more relaxed availability requirements. To fulfill the service availability requirements, Red Hat recommends the following approach.
+Gold Level Service is provided by two or more production OpenShift clusters acting in concert to provide a single logical platform to the application users.  The objective is to have multiple clusters of a smaller size so that no single cluster being offline for any reason will impact business operations.  The configuration and management of these individual clusters would be automated and governed centrally (via Red Hat’s Advanced Cluster Management and Advanced Cluster Security).   An example is below:  
+________________
+
+
+
+
+2. Governance and Accountability Recommendation
+Implementation of the Service Resiliency and Reliability recommendations will go a long way to addressing the governance and accountability for the Container Application Platform environments.  All modifications will be done through automation (provided as part of ACM), and there will be change logs and audit trails for any changes made.  The Declarative State approach of ACM (you specify what the environment should look like, and the platform makes the appropriate changes and manages configuration drift) ensures that the system is always configured per the design specifications.
+For systems outside of the scope of control (such as external Virtual Machines or other infrastructure) that require a procedural approach to configuration, the recommendation is to follow a similar approach, but Ansible Automation Platform does the configuration based on specifications stored in a central repository.  That way, any modifications to a platform are tracked, and there is an audit trail to identify any changes made.  As part of any modification, an automatic update of the CMDB would be done as well.
+3. Standardization and Repeatability Recommendation
+Both of the items above will result in standardization and repeatability across the environment.  NS will have an up-to-date CMDB, as well as the ability to quickly create/recreate Container Platform environments as needed (both on-premise as well as in the cloud)
+________________
+7. INVESTMENT & RETURN CONSIDERATIONS
+Assessing the financial impact of adopting these proposals is challenging. However, we've discovered that the apps operating on the Container Platform Service are vital for train operations. Any downtime could potentially halt trains. In addition to mitigating this risk, implementing these recommendations would enhance operational efficiency through improved problem detection and resolution times, reduce manual labor, and decrease the frequency of rework and system outages.
+Most of the necessary Red Hat components for these improvements are already owned by Norfolk Southern. However, a few additional components would be required to expand and further NS business resilience:
+* Red Hat OpenShift Platform Plus Upgrade: This upgrade is crucial for efficiently managing multiple OpenShift clusters in a standardized way, and enabling what is known as "fleet management". This visibility is essential for identifying potential disruptions, such as delays or route changes, and enabling proactive decision-making to maintain operational continuity.
+* Ansible Automation Platform (AAP): To align with governance and accountability objectives, acquiring Ansible Automation Platform (AAP) becomes imperative. At present, Norfolk Southern relies on a free, unsupported version of Ansible for automation, lacking centralized oversight and inhibiting the promotion of reuse. Transitioning to AAP allows oneself to establish a more cohesive/unified end-to-end platform, bolstering resilience plans, & allowing NS to integrate with the current technology footprint both on-prem and in the cloud.
+* Additional OpenShift Subscriptions: Depending on the desired level of service resilience for mission-critical applications, more OpenShift capacity may be needed. This capacity would be determined by the criticality of the application workload and deployment model showcased above. 
+* Red Hat Technical Account Management & Professional Services: To ensure the success of this project and the achievement of its goals, we recommend investing in support from dedicated Red Hat Technical Account Managers who will bring expertise to your teams & help you scale through implementation.
+* Extended Life Support (ELS) for RHEL 7: Taking into account that we have a strategic partner who is both looking to advance their platform capabilities and has a difficult business situation currently, Red Hat wants to propose fully funding the ELS purchase for $375K and redirecting that capital to assist in moving NS forward on its resilience improvement plan. Essentially, Instead of buying time for migration around an old version of RHEL, we want to invest alongside you and put those dollars into achieving your resilience goals. 
+________________
+
+
+
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+
+________________________________________________________
+
+
+THANK YOU
+
+
+
+
+________________________________________________________
+
+
+
+
+
+
+Proposed Partnership Plan
+March 2024
+
+
+____________________________________________________________________________________________________
+PROPRIETARY & CONFIDENTIAL                                                                             PAGE
