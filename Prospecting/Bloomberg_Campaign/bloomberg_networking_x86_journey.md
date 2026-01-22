@@ -21,7 +21,7 @@ This campaign is designed for an AE to "quarterback" a larger team. You are not 
 
 ---
 
-## Targeted Content needed for the Junior AE
+## Targeted Content needed for the AE
 
 ### 1. Target: Ranga Sam (Security/NetOps)
 *   **Context:** Confirmed title: *IT Security Architect*. Attended Ansible Networking Workshop.
