@@ -1,8 +1,8 @@
 # Bloomberg Matrix Sales Campaign: Networking & x86
 
 ## The Matrix "Team" Structure
-This campaign is designed for a Junior AE to "quarterback" a larger team. You are not expected to close the deal alone.
-*   **Junior AE (You)**: The "Door Opener." You own the relationship, the scheduling, and the follow-up. You find the pain.
+This campaign is designed for an AE to "quarterback" a larger team. You are not expected to close the deal alone.
+*   **AE (You)**: The "Door Opener." You own the relationship, the scheduling, and the follow-up. You find the pain.
 *   **Account Solution Architect (Account SA)**: The "Technical Validator." They prove that AAP is better than homegrown scripts. They handle the "how".
 *   **Sales Specialist**: The "Business Case Builder." They prove the ROI to management. They handle the "why".
 
