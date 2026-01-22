@@ -10,7 +10,7 @@ This campaign is designed for an AE to "quarterback" a larger team. You are not 
 
 ## The Journey Map (6-Week Sprints)
 
-| Week | Phase | Activity (Junior AE Action) | Resource Needed |
+| Week | Phase | Activity (AE Action) | Resource Needed |
 | :--- | :--- | :--- | :--- |
 | **1** | **Re-Engagement** | Send "Workshop Follow-up" email to Ranga. Send "Maintenance Burden" email to Richard. | None |
 | **2** | **Discovery** | Goal: Book a 30-min "Discovery Call". Ask about "Day 2" costs of their current tools. | None |
