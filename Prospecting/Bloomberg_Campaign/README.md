@@ -11,7 +11,7 @@ This folder contains a complete sales campaign package for penetrating Bloomberg
 
 ## 2. Specialized "Matrix" Campaign (Networking & x86)
 *Targeting Ranga Sam and Richard McLeod*
-*   **[bloomberg_networking_x86_journey.md](bloomberg_networking_x86_journey.md)**: A detailed "Journey Map" for a Junior Account Executive.
+*   **[bloomberg_networking_x86_journey.md](bloomberg_networking_x86_journey.md)**: A detailed "Journey Map" for an Account Executive.
     *   Includes specific 6-week engagement timeline.
     *   Defines roles for Account SA vs. Sales Specialist.
     *   Contains highly tailored email scripts for Ranga (Network Workshop Follow-up) and Richard (Homegrown Platform Migration).
